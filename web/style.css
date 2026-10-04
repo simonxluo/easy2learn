@@ -190,34 +190,9 @@ button.self-bad { border-color: var(--danger); color: var(--danger); }
 }
 
 /* ================= 学习模式 (learn.html) ================= */
-body.learn #sidebar .panel.grow { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-body.learn #outline-search {
-  background: var(--bg3); border: 1px solid var(--border); color: var(--fg);
-  border-radius: 8px; padding: 6px 10px; font-size: 13px; margin-bottom: 8px; width: 100%;
-}
-body.learn .outline { overflow-y: auto; flex: 1; font-size: 13.5px; }
-.ol-group {
-  display: flex; align-items: center; gap: 6px; padding: 7px 8px; margin-top: 6px;
-  color: var(--fg); font-weight: 600; border-radius: 8px; cursor: pointer; user-select: none;
-}
-.ol-group:hover { background: var(--bg3); }
-.ol-group .ol-toggle { width: 0; height: 0; border-left: 5px solid var(--muted); border-top: 4px solid transparent; border-bottom: 4px solid transparent; transition: transform .15s; }
-.ol-group.open .ol-toggle { transform: rotate(90deg); }
-.ol-item {
-  display: flex; align-items: flex-start; gap: 7px; padding: 5px 8px 5px 22px;
-  color: var(--muted); text-decoration: none; border-radius: 8px; line-height: 1.45;
-}
-.ol-item:hover { background: var(--bg3); color: var(--fg); }
-.ol-item.active { background: color-mix(in srgb, var(--accent) 18%, transparent); color: #cfe0ff; }
-.ol-item.done .ol-text { color: var(--accent2); }
-.ol-item.done .ol-text::after { content: " ✓"; }
-.ol-check { color: var(--accent2); flex-shrink: 0; cursor: pointer; width: 14px; }
-
 body.learn #topbar { position: sticky; top: 0; background: var(--bg); z-index: 5; }
 .topbar-actions { display: inline-flex; gap: 6px; align-items: center; }
-body.learn #content { padding: 18px 34px 80px; }
-.learn-doc { max-width: 860px; }
-.learn-doc h1 { font-size: 24px; margin: 8px 0 16px; }
+#crumb { font-size: 13.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
 .learn-doc h2 {
   font-size: 19px; margin: 30px 0 12px; padding-top: 14px; border-top: 1px dashed var(--border);
   scroll-margin-top: 64px;

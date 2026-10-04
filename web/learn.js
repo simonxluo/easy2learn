@@ -97,6 +97,7 @@ function applyView() {
     renderSlideMode()
   }
   renderStats()
+  renderCrumb()
 }
 
 /** 领域模型 → 图谱引擎的节点形状（引擎只懂 id/label/chapter/done，不知道 Unit） */
@@ -141,6 +142,21 @@ function renderStats() {
     `<div class="bar"><i style="width:${pct}%"></i></div>`
 }
 
+/** 顶栏面包屑：科目 · 当前知识点/进度（修复：此前静态写死「加载中…」永不更新） */
+function renderCrumb() {
+  const t = topic()
+  if (!t) return
+  let text = t.name
+  if (store.view === 'graph') {
+    const u = store.selected ? unitById(store.selected) : null
+    if (u) text += ` · ${u.title}`
+  } else {
+    const us = units()
+    if (us.length) text += ` · ${store.slideIndex + 1}/${us.length}`
+  }
+  $('#crumb').textContent = text
+}
+
 function renderLegend() {
   const t = topic()
   $('#legend').innerHTML = t.chapters
@@ -182,10 +198,12 @@ function showDetail(id) {
   $('#detail-body').innerHTML = renderUnit(u)
   $('#node-detail').classList.remove('hidden')
   $('#node-detail').scrollTop = 0
+  renderCrumb()
 }
 
 function hideDetail() {
   $('#node-detail').classList.add('hidden')
+  renderCrumb()
 }
 
 /* ================= 滑动阅读模式 ================= */
@@ -240,6 +258,7 @@ function scrollToCard(index, smooth = true) {
   const el = cardEls()[index]
   if (!el) return
   el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', inline: 'center', block: 'nearest' })
+  renderCrumb() // 程序化切卡（按钮/目录）不必然触发 scroll 事件守卫，这里兜底刷新
 }
 
 function onSlideScroll() {
@@ -254,6 +273,7 @@ function onSlideScroll() {
   if (best !== store.slideIndex) {
     store.slideIndex = best
     updateTocActive()
+    renderCrumb()
   }
 }
 

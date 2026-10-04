@@ -54,20 +54,3 @@ export function renderMd(md) {
   closeList(); flushTable()
   return out.join('\n')
 }
-
-/** 从 markdown 提取大纲（供学习页侧栏）：[{level, text, id}] */
-export function extractOutline(md) {
-  const out = []
-  const seen = new Map()
-  for (const line of String(md || '').replace(/\r\n/g, '\n').split('\n')) {
-    const m = /^(#{2,3})\s+(.+)$/.exec(line.trim())
-    if (!m) continue
-    const text = m[2].trim()
-    let id = 'h-' + text.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').toLowerCase()
-    const n = (seen.get(id) || 0) + 1
-    seen.set(id, n)
-    if (n > 1) id = `${id}-${n}`
-    out.push({ level: m[1].length, text, id })
-  }
-  return out
-}

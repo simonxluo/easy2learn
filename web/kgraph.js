@@ -59,7 +59,6 @@ export class KGraph {
       }
       if (this.selected && !this.byId.has(this.selected)) this.selected = null
       this._dirty = true
-      if (this.opts.onData) this.opts.onData()
       return
     }
     this._sig = sig
@@ -82,7 +81,6 @@ export class KGraph {
     for (let i = 0; i < 260; i++) this._tick() // 预收敛，避免开场乱飞
     this.alpha = 0.6
     this._dirty = true
-    if (this.opts.onData) this.opts.onData()
   }
 
   select(id) {
