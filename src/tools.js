@@ -5,6 +5,7 @@ import {
   appendExtraEdge,
   buildGraphFromNotes,
   findNodeId,
+  inferNodeKind,
   nodeIdFor,
   readExtra,
   removeExtraEdge,
@@ -223,6 +224,7 @@ export function buildTools(config) {
           nodeLabel: { type: 'string', description: 'add-node/update-node 的知识点标题' },
           chapter: { type: 'string', description: '章节名(新章节会自动创建)' },
           content: { type: 'string', description: '知识点内容(markdown)' },
+          kind: { type: 'string', enum: ['qa', 'concept', 'code'], description: '知识形态(可选，缺省按内容自动推断)' },
         },
         required: ['action'],
         additionalProperties: false,
@@ -299,10 +301,11 @@ export function buildTools(config) {
           if (!label) throw new GraphError('add-node 需要 nodeLabel')
           const content = str(args, 'content')
           const chapterName = str(args, 'chapter') || '补充'
+          const kind = str(args, 'kind') || inferNodeKind(content)
           const extra = readExtra(live.extraPath)
           const bucket = extra[topicId] || (extra[topicId] = { edges: [], nodes: [] })
           if (bucket.nodes.some((n) => n.label === label)) throw new GraphError('graph-extra.json 已有同名手工节点')
-          bucket.nodes.push({ label, chapter: chapterName, content })
+          bucket.nodes.push({ label, chapter: chapterName, kind, content })
           writeExtra(live.extraPath, extra)
           return mutateGraph((g) => {
             const tp = g.topics.find((x) => x.id === topicId)
@@ -312,8 +315,8 @@ export function buildTools(config) {
               tp.chapters.push(chap)
             }
             const id = nodeIdFor(tp, label)
-            tp.nodes.push({ id, chapter: chap.id, label, content })
-            return { id, chapter: chap.name, persisted: 'graph-extra.json' }
+            tp.nodes.push({ id, chapter: chap.id, label, kind, content })
+            return { id, chapter: chap.name, kind, persisted: 'graph-extra.json' }
           })
         }
 
@@ -324,6 +327,7 @@ export function buildTools(config) {
           const patch = {}
           if (str(args, 'nodeLabel')) patch.label = str(args, 'nodeLabel')
           if (str(args, 'content')) patch.content = str(args, 'content')
+          if (str(args, 'kind')) patch.kind = str(args, 'kind')
           if (str(args, 'chapter')) {
             const name = str(args, 'chapter')
             patch.chapter = name // normalizeGraph/前端按名称或 id 匹配；regen 时 ensureChapter 兜底
@@ -333,7 +337,7 @@ export function buildTools(config) {
           const bucket = extra[topicId]
           if (bucket) {
             const en = bucket.nodes.find((n) => labelMatchesExtraNode(topic, n, id))
-            if (en) Object.assign(en, patch.label ? { label: patch.label } : {}, patch.content !== undefined ? { content: patch.content } : {}, patch.chapter ? { chapter: patch.chapter } : {})
+            if (en) Object.assign(en, patch.label ? { label: patch.label } : {}, patch.content !== undefined ? { content: patch.content } : {}, patch.chapter ? { chapter: patch.chapter } : {}, patch.kind ? { kind: patch.kind } : {})
             writeExtra(live.extraPath, extra)
           }
           return mutateGraph((g) => {

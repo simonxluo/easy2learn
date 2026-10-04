@@ -306,6 +306,27 @@ a.ghost { display: inline-block; }
 }
 .card-head { display: flex; gap: 8px; align-items: center; }
 .card-head .badge { margin-right: auto; }
+.card-head .badge.kind { margin-right: 0; }
+.card-head .badge.kind + .badge { margin-right: auto; }
 .slide-card h2 { font-size: 19px; margin: 12px 0 10px; }
 .slide-card .card-head .sec-mark { float: none; }
 body.learn .slide-card .md { font-size: 14.5px; }
+
+/* ================= 知识单元渲染（knowledge.js renderUnit 产物） ================= */
+.badge.kind { background: rgba(91, 140, 255, 0.12); border: 1px solid rgba(91, 140, 255, 0.35); color: #9db8ff; }
+.unit { line-height: 1.65; }
+.unit-qa .qa-banner {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: linear-gradient(135deg, rgba(91, 140, 255, 0.14), rgba(178, 141, 255, 0.10));
+  border: 1px solid rgba(91, 140, 255, 0.35); border-left: 3px solid var(--accent);
+  border-radius: 10px; padding: 10px 14px; margin-bottom: 12px;
+}
+.unit-qa .qa-badge {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 6px; margin-top: 1px;
+  background: var(--accent); color: #fff; font-weight: 700; font-size: 13px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.unit-qa .qa-q { font-weight: 600; font-size: 15px; color: var(--fg); }
+.unit-qa .qa-a > :first-child { margin-top: 0; }
+.unit-code pre { border-left: 3px solid #7ee0a3; }
+.unit-qa blockquote, .unit blockquote { border-left: 3px solid #ffc86b; background: rgba(255, 200, 107, 0.06); }

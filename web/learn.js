@@ -1,14 +1,19 @@
-/* easy2learn 学习模式 v2：知识图谱（点选 → 下方看内容）+ 滑动阅读（目录 + 横向滑卡），两种方式可切换 */
-import { esc, renderMd } from './md.js'
+/* easy2learn 学习模式 v3
+ * 展示层只消费 knowledge.js 归一化出的领域模型(Topic/Unit)，
+ * 原始数据形状(graph.json 等)被隔离在适配层之后 —— 换数据源不动视图。
+ * 视图：🕸 知识图谱（点选 → 下方看内容）+ 📑 滑动阅读（竖目录 + 横向滑卡）
+ */
+import { esc } from './md.js'
 import { KGraph } from './kgraph.js'
+import { adapt, renderUnit, kindMeta } from './knowledge.js'
 
 const $ = (sel) => document.querySelector(sel)
 
 const store = {
-  graph: null,          // /api/graph
+  topics: [],            // 领域模型 Topic[]（adapt 产物）
   topicId: null,
-  view: 'graph',        // graph | slide
-  selected: null,       // 当前知识点节点 id
+  view: 'graph',         // graph | slide
+  selected: null,        // 当前知识点单元 id
   slideIndex: 0,
   learned: loadLearned(),
 }
@@ -17,13 +22,13 @@ function loadLearned() {
   try { return JSON.parse(localStorage.getItem('e2l.learned') || '{}') } catch { return {} }
 }
 function saveLearned() { localStorage.setItem('e2l.learned', JSON.stringify(store.learned)) }
-function key(nodeId) { return `${store.topicId}::${nodeId}` }
-function isLearned(nodeId) { return Boolean(store.learned[key(nodeId)]) }
+function key(unitId) { return `${store.topicId}::${unitId}` }
+function isLearned(unitId) { return Boolean(store.learned[key(unitId)]) }
 
-function topic() { return store.graph.topics.find((t) => t.id === store.topicId) }
-function nodes() { return topic()?.nodes || [] }
+function topic() { return store.topics.find((t) => t.id === store.topicId) }
+function units() { return topic()?.units || [] }
 function edges() { return topic()?.edges || [] }
-function nodeById(id) { return nodes().find((n) => n.id === id) }
+function unitById(id) { return units().find((u) => u.id === id) }
 function neighborsOf(id) {
   const out = new Set()
   for (const e of edges()) {
@@ -40,10 +45,16 @@ async function fetchJson(url) {
   return data
 }
 
+async function loadTopics() {
+  const raw = await fetchJson('/api/graph')
+  const topics = adapt(raw)
+  if (!topics.length) throw new Error('没有可识别的知识数据（schema 不支持或 topics 为空）')
+  store.topics = topics
+}
+
 async function boot() {
-  store.graph = await fetchJson('/api/graph')
-  if (!store.graph.topics?.length) throw new Error('graph.json 无 topics')
-  store.topicId = store.graph.topics[0].id
+  await loadTopics()
+  store.topicId = store.topics[0].id
   bindStatic()
   renderSidebar()
   initView()
@@ -88,10 +99,11 @@ function applyView() {
   renderStats()
 }
 
+/** 领域模型 → 图谱引擎的节点形状（引擎只懂 id/label/chapter/done，不知道 Unit） */
 function refreshGraph() {
   const t = topic()
   kg.setData({
-    nodes: nodes().map((n) => ({ ...n, done: isLearned(n.id) })),
+    nodes: units().map((u) => ({ id: u.id, label: u.title, chapter: u.chapter, done: isLearned(u.id) })),
     edges: edges(),
     chapters: t.chapters,
   })
@@ -108,22 +120,24 @@ function refreshGraph() {
 
 /* ================= 侧栏 ================= */
 function renderSidebar() {
-  $('#topic-list').innerHTML = store.graph.topics
+  $('#topic-list').innerHTML = store.topics
     .map((t) => {
-      const done = t.nodes.filter((n) => isLearned(n.id)).length
+      const done = t.units.filter((u) => isLearned(u.id)).length
       const active = store.topicId === t.id ? 'active' : ''
-      return `<li data-topic="${t.id}" class="${active}"><span>${esc(t.name)}</span><span class="count">${done}/${t.nodes.length}</span></li>`
+      const kinds = new Set(t.units.map((u) => u.kind))
+      const mix = [...kinds].map((k) => kindMeta(k).icon).join('') || '📄'
+      return `<li data-topic="${t.id}" class="${active}" title="${esc(t.name)} · ${t.units.length} 个知识点"><span>${mix} ${esc(t.name)}</span><span class="count">${done}/${t.units.length}</span></li>`
     })
     .join('')
   renderStats()
 }
 
 function renderStats() {
-  const ns = nodes()
-  const done = ns.filter((n) => isLearned(n.id)).length
-  const pct = ns.length ? Math.round((done / ns.length) * 100) : 0
+  const us = units()
+  const done = us.filter((u) => isLearned(u.id)).length
+  const pct = us.length ? Math.round((done / us.length) * 100) : 0
   $('#stats').innerHTML =
-    `<div>已学 <b>${done}</b> / ${ns.length} 个知识点</div>` +
+    `<div>已学 <b>${done}</b> / ${us.length} 个知识点</div>` +
     `<div class="bar"><i style="width:${pct}%"></i></div>`
 }
 
@@ -132,9 +146,9 @@ function renderLegend() {
   $('#legend').innerHTML = t.chapters
     .map((c) => {
       const color = kg.chapterColors.get(c.id) || '#8b93a3'
-      const total = nodes().filter((n) => n.chapter === c.id).length
-      const done = nodes().filter((n) => n.chapter === c.id && isLearned(n.id)).length
-      return `<div class="legend-item"><i style="background:${color}"></i>${esc(c.name)} <span class="count">${done}/${total}</span></div>`
+      const inCh = units().filter((u) => u.chapter === c.id)
+      const done = inCh.filter((u) => isLearned(u.id)).length
+      return `<div class="legend-item"><i style="background:${color}"></i>${esc(c.name)} <span class="count">${done}/${inCh.length}</span></div>`
     })
     .join('') + `<div class="legend-item hint">✓ = 已学 · 实线绿 = 关联 · 灰 = 下一问</div>`
 }
@@ -148,22 +162,24 @@ function selectNode(id) {
 }
 
 function showDetail(id) {
-  const n = nodeById(id)
-  if (!n) return
-  const chapterName = topic().chapters.find((c) => c.id === n.chapter)?.name || n.chapter
+  const u = unitById(id)
+  if (!u) return
+  const meta = kindMeta(u.kind)
+  const chapterName = topic().chapters.find((c) => c.id === u.chapter)?.name || u.chapter
   $('#detail-chapter').textContent = chapterName
-  $('#detail-title').textContent = n.label
+  $('#detail-kind').textContent = `${meta.icon} ${meta.label}`
+  $('#detail-title').textContent = u.title
   const learned = isLearned(id)
   $('#btn-mark').textContent = learned ? '✓ 已学' : '○ 标记已学'
   $('#btn-mark').classList.toggle('on', learned)
   const rels = neighborsOf(id)
-    .map((nid) => nodeById(nid))
+    .map((nid) => unitById(nid))
     .filter(Boolean)
     .slice(0, 8)
   $('#detail-related').innerHTML = rels.length
-    ? `<span class="hint">关联知识点：</span>` + rels.map((r) => `<button class="chip small" data-jump="${r.id}">${esc(r.label)}</button>`).join('')
+    ? `<span class="hint">关联知识点：</span>` + rels.map((r) => `<button class="chip small" data-jump="${r.id}">${esc(r.title)}</button>`).join('')
     : ''
-  $('#detail-body').innerHTML = renderMd(n.content)
+  $('#detail-body').innerHTML = renderUnit(u)
   $('#node-detail').classList.remove('hidden')
   $('#node-detail').scrollTop = 0
 }
@@ -175,17 +191,17 @@ function hideDetail() {
 /* ================= 滑动阅读模式 ================= */
 function renderSlideMode() {
   const t = topic()
-  const ns = nodes()
+  const us = units()
   // 目录：章节分组的小 chip 条
   const groups = t.chapters
     .map((c) => {
-      const items = ns
-        .map((n, i) => ({ n, i }))
-        .filter(({ n }) => n.chapter === c.id)
-        .map(({ n, i }) => {
+      const items = us
+        .map((u, i) => ({ u, i }))
+        .filter(({ u }) => u.chapter === c.id)
+        .map(({ u, i }) => {
           const active = i === store.slideIndex ? 'active' : ''
-          const done = isLearned(n.id) ? 'done' : ''
-          return `<button class="toc-item ${active} ${done}" data-goto="${i}">${esc(shortLabel(n.label))}</button>`
+          const done = isLearned(u.id) ? 'done' : ''
+          return `<button class="toc-item ${active} ${done}" data-goto="${i}">${esc(shortLabel(u.title))}</button>`
         })
         .join('')
       return `<span class="toc-group">${esc(c.name)}</span>${items}`
@@ -193,25 +209,25 @@ function renderSlideMode() {
     .join('')
   $('#slide-toc').innerHTML = groups
 
-  // 横向滑卡
-  $('#slide-track').innerHTML = ns
-    .map((n, i) => {
-      const chapterName = t.chapters.find((c) => c.id === n.chapter)?.name || ''
-      const learned = isLearned(n.id)
+  // 横向滑卡：内容一律 renderUnit(unit)，卡片不关心知识形态
+  $('#slide-track').innerHTML = us
+    .map((u, i) => {
+      const chapterName = t.chapters.find((c) => c.id === u.chapter)?.name || ''
+      const learned = isLearned(u.id)
+      const meta = kindMeta(u.kind)
       return `<article class="slide-card" data-index="${i}">
         <header class="card-head">
           <span class="badge type">${esc(chapterName)}</span>
-          <span class="badge">${i + 1}/${ns.length}</span>
-          <button class="sec-mark ${learned ? 'on' : ''}" data-mark="${n.id}">${learned ? '✓ 已学' : '○ 标记已学'}</button>
+          <span class="badge kind">${meta.icon} ${meta.label}</span>
+          <span class="badge">${i + 1}/${us.length}</span>
+          <button class="sec-mark ${learned ? 'on' : ''}" data-mark="${u.id}">${learned ? '✓ 已学' : '○ 标记已学'}</button>
         </header>
-        <h2>${esc(n.label)}</h2>
-        <div class="md card-body">${renderMd(n.content)}</div>
+        <h2>${esc(u.title)}</h2>
+        <div class="card-body">${renderUnit(u)}</div>
       </article>`
     })
     .join('')
 
-  const viewport = $('#slide-viewport')
-  void viewport
   scrollToCard(store.slideIndex, false)
   updateTocActive()
 }
@@ -305,21 +321,21 @@ function bindStatic() {
 }
 
 function step(dir) {
-  const ns = nodes()
-  if (!ns.length) return
+  const us = units()
+  if (!us.length) return
   if (store.view === 'graph') {
-    // 图谱模式：沿节点顺序（=笔记阅读顺序）走
-    const idx = store.selected ? ns.findIndex((n) => n.id === store.selected) : -1
-    const next = ns[Math.min(ns.length - 1, Math.max(0, idx + dir))]
+    // 图谱模式：沿单元顺序（=笔记阅读顺序）走
+    const idx = store.selected ? us.findIndex((u) => u.id === store.selected) : -1
+    const next = us[Math.min(us.length - 1, Math.max(0, idx + dir))]
     selectNode(next.id)
   } else {
-    store.slideIndex = Math.min(ns.length - 1, Math.max(0, store.slideIndex + dir))
+    store.slideIndex = Math.min(us.length - 1, Math.max(0, store.slideIndex + dir))
     scrollToCard(store.slideIndex)
   }
 }
 
-function toggleLearned(nodeId) {
-  const k = key(nodeId)
+function toggleLearned(unitId) {
+  const k = key(unitId)
   store.learned[k] = !store.learned[k]
   saveLearned()
   refreshUI()
@@ -340,7 +356,7 @@ function refreshUI() {
     })
     document.querySelectorAll('.toc-item').forEach((b) => {
       const idx = Number(b.dataset.goto)
-      b.classList.toggle('done', isLearned(nodes()[idx]?.id))
+      b.classList.toggle('done', isLearned(units()[idx]?.id))
     })
   }
 }
@@ -355,22 +371,22 @@ function connectSse() {
   es.addEventListener('graph', async () => {
     const prevTopic = store.topicId
     const prevSel = store.selected
-    store.graph = await fetchJson('/api/graph')
-    store.topicId = store.graph.topics.some((t) => t.id === prevTopic) ? prevTopic : store.graph.topics[0].id
-    if (store.selected && !nodeById(store.selected)) store.selected = null
-    if (store.slideIndex >= nodes().length) store.slideIndex = 0
+    await loadTopics()
+    store.topicId = store.topics.some((t) => t.id === prevTopic) ? prevTopic : store.topics[0].id
+    if (store.selected && !unitById(store.selected)) store.selected = null
+    if (store.slideIndex >= units().length) store.slideIndex = 0
     viewNeedsFit = true
     renderSidebar()
     applyView()
-    if (prevSel && nodeById(prevSel)) {
+    if (prevSel && unitById(prevSel)) {
       store.selected = prevSel
       if (store.view === 'graph') selectNode(prevSel)
     }
   })
   es.addEventListener('notes', async () => {
-    // 笔记被编辑：图谱未必重建，先重拉 graph（agent 通常会跟着 regen）；内容仍以 graph 为准
+    // 笔记被编辑：图谱未必重建，先重拉（agent 通常会跟着 regen）；内容仍以 graph 为准
     try {
-      store.graph = await fetchJson('/api/graph')
+      await loadTopics()
       viewNeedsFit = true
       renderSidebar()
       applyView()

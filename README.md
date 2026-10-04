@@ -8,7 +8,7 @@
 - **两种模式**：
   - **刷题模式** `/` — 单选/多选/判断/问答/编程题练习
   - **学习模式** `/learn.html` — 两种查看方式可切换：
-    - **🕸 知识图谱**：力导向图展示知识点网络（`web/kgraph.js` 自研引擎，零依赖；按章节着色、已学打 ✓、拖拽平移/滚轮或双指捏合缩放/拖节点，脏标记渲染保证收敛后交互即时重绘），**点击节点 → 下方面板看该知识点内容**，关联知识点可点击跳转，选中时高亮邻边并显示关联标签
+    - **🕸 知识图谱**：力导向图展示知识点网络（`web/kgraph.js` 自研引擎，零依赖；按章节着色、已学打 ✓、拖拽平移/滚轮或双指捏合缩放/拖节点，脏标记渲染保证收敛后交互即时重绘），**点击节点 → 下方面板看该知识点内容**，关联知识点可点击跳转，选中时高亮邻边并显示关联标签；展示层经 `web/knowledge.js` 与数据解耦，问答/概念/代码等多形态知识各自渲染（卡片与详情带形态角标）
     - **📑 滑动阅读**：上方目录条（章节分组 + 知识点 chip）+ 下方横向 scroll-snap 滑卡，支持触控板/触摸滑动、←/→ 键、点击目录跳转
     - 图谱数据由 `scripts/gen-graph.mjs` 从笔记生成（`data/graph.json`，经 `/api/graph` 提供）：节点=问答卡片，边=章节顺序链+手工策划的跨章节语义关联
 - **四类题型 + 编程题本地判题**：选择、判断即时判分；问答对照参考答案自评；编程题写到临时目录，用本机 `g++/python3/node` 编译运行测试用例（超时 5s，输出比对）
@@ -100,11 +100,15 @@ node scripts/gen-bank.mjs
 
 ```jsonc
 {
+  "schema": 1,                    // 数据契约版本：前端适配层据此选择适配器
   "generatedAt": "…", "engine": "builtin-force",
   "topics": [{
     "id": "os", "name": "操作系统", "note": "interview-prep/os/操作系统.md",
+    "source": "notes",            // 数据源类型（notes=笔记解析；预留 quiz/custom…）
     "chapters": [{ "id": "slug", "name": "进程与线程" }],
-    "nodes":   [{ "id": "os:xxx", "chapter": "slug", "label": "知识点", "content": "markdown" }],
+    "nodes":   [{ "id": "os:xxx", "chapter": "slug", "label": "知识点",
+                  "kind": "qa|concept|code",      // 知识形态，前端按 kind 查渲染器
+                  "content": "markdown" }],
     "edges":   [{ "s": "节点id", "t": "节点id", "kind": "seq|rel", "label": "关联理由" }],
     "warnings": ["未匹配的策展边"]
   }]
@@ -112,10 +116,29 @@ node scripts/gen-bank.mjs
 ```
 
 **构建分层**（`buildGraphFromNotes`）：
-- 笔记 `## 📇 问答卡片` → 节点主体（label/content）+ 章节 + 章节内顺序链（`kind=seq`）
-- `data/graph-extra.json` → 跨章节语义关联（`kind=rel`）与手工节点；**工具增删也写这里，regen 不丢**（兼容 `[s,t,label]` 数组与 `{s,t,label}` 对象两种形式）
+- 笔记 `## 📇 问答卡片` → 节点主体（label/content/`kind=qa`）+ 章节 + 章节内顺序链（`kind=seq`）
+- `data/graph-extra.json` → 跨章节语义关联（`kind=rel`）与手工节点（`kind` 可指定，缺省 `inferNodeKind` 按内容推断）；**工具增删也写这里，regen 不丢**（兼容 `[s,t,label]` 数组与 `{s,t,label}` 对象两种形式）
 
 重建：`node scripts/gen-graph.mjs`（CLI 薄壳，逻辑在 src/graph.js）或工具 `easy2learn_graph {action:"regen"}`。
+
+### 前端展示框架与数据解耦（web/knowledge.js）
+
+视图（图谱/滑动/详情）**不直接消费服务端数据形状**，中间隔了一层知识内核：
+
+```
+数据源                      适配器注册表                 领域模型              视图
+graph.json (schema 1) ─→ registerAdapter('graph',…) ─→ Topic{units[]} ─→ 图谱(kgraph.js)
+bank.json   (未来)    ─→ registerAdapter('quiz', …)                    ─→ 滑动卡/详情
+任意新源              ─→ registerAdapter(schema,…)                     ─→ renderUnit(unit)
+```
+
+- **领域模型**：`Topic { id, name, source, chapters, units, edges, warnings }`；`Unit { id, title, kind, chapter, tags, body }` —— 视图只认这个形状
+- **知识形态 kind**：`qa`(问答卡：问题横幅+答案) / `concept`(概念) / `code`(代码为主)，每种一个渲染器；未知 kind 有兜底角标与渲染，永不白屏
+- **渲染器注册表**：`registerRenderer(kind, fn)` —— 滑动卡和详情面板都通过 `renderUnit(unit)` 出内容，新增形态不改视图代码
+- **兜底推断**：服务端没给 kind 的存量数据由 `inferUnitKind`（A:/Q: 标记 → qa，代码块体积超过散文 → code）客户端补判；不认识的数据形状 → 空态而非崩溃
+
+新增一种知识展示的路径：① 服务端数据带 kind（或靠推断）② `registerRenderer('新kind', fn)` ③ 完成。
+新增一个数据源的路径：① 服务端输出 `{ schema, topics }` ② `registerAdapter(schemaName, fn)` ③ 视图自动获得三种展示。
 
 ### 控制流
 

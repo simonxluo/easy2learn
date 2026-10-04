@@ -3,12 +3,16 @@
  *
  * Graph 结构（data/graph.json，由笔记 + data/graph-extra.json 构建）：
  * {
+ *   "schema": 1,                    // 数据契约版本：前端适配层据此选择适配器
  *   "generatedAt": "...",
  *   "engine": "builtin-force",
  *   "topics": [{
  *     "id": "os", "name": "操作系统", "note": "interview-prep/os/操作系统.md",
+ *     "source": "notes",            // 数据源类型（notes=笔记解析；未来可有 quiz/custom…）
  *     "chapters": [{ "id": "slug", "name": "进程与线程" }],
- *     "nodes":   [{ "id": "os:xxx", "chapter": "slug", "label": "...", "content": "markdown" }],
+ *     "nodes":   [{ "id": "os:xxx", "chapter": "slug", "label": "...",
+ *                   "kind": "qa|concept|code",   // 知识形态，前端按 kind 查渲染器
+ *                   "content": "markdown" }],
  *     "edges":   [{ "s": "节点id", "t": "节点id", "kind": "seq|rel", "label": "关联理由" }],
  *     "warnings": ["未匹配的策展边, ..."]
  *   }]
@@ -21,6 +25,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+export const UNIT_KINDS = ['qa', 'concept', 'code']
+
 export class GraphError extends Error {
   constructor(message) {
     super(message)
@@ -29,7 +35,7 @@ export class GraphError extends Error {
 }
 
 export function emptyGraph() {
-  return { generatedAt: new Date().toISOString(), engine: 'builtin-force', topics: [] }
+  return { schema: 1, generatedAt: new Date().toISOString(), engine: 'builtin-force', topics: [] }
 }
 
 export function loadGraph(graphPath) {
@@ -46,6 +52,7 @@ export function loadGraph(graphPath) {
 export function normalizeGraph(input) {
   const out = emptyGraph()
   if (!input || typeof input !== 'object') return out
+  out.schema = Number(input.schema) || 1
   out.generatedAt = String(input.generatedAt || out.generatedAt)
   out.engine = String(input.engine || out.engine)
   const seenTopic = new Set()
@@ -57,6 +64,7 @@ export function normalizeGraph(input) {
       id: t.id,
       name: String(t.name || t.id),
       note: String(t.note || ''),
+      source: String(t.source || 'notes'),
       chapters: Array.isArray(t.chapters) ? t.chapters.filter((c) => c && c.id && c.name) : [],
       nodes: [],
       edges: [],
@@ -72,6 +80,7 @@ export function normalizeGraph(input) {
         id,
         chapter: String(n.chapter || 'other'),
         label: n.label.trim(),
+        kind: UNIT_KINDS.includes(n.kind) ? n.kind : '',
         content: String(n.content || ''),
       })
     }
@@ -113,7 +122,7 @@ export function readExtra(extraPath) {
         edges: (Array.isArray(val?.edges) ? val.edges : []).map(normEdge).filter(Boolean),
         nodes: (Array.isArray(val?.nodes) ? val.nodes : [])
           .filter((n) => n && typeof n.label === 'string')
-          .map((n) => ({ label: String(n.label), chapter: String(n.chapter || 'other'), content: String(n.content || '') })),
+          .map((n) => ({ label: String(n.label), chapter: String(n.chapter || 'other'), kind: UNIT_KINDS.includes(n.kind) ? n.kind : '', content: String(n.content || '') })),
       }
     }
     return out
@@ -225,7 +234,17 @@ export function buildGraphFromNotes({ root, topics, extraPath }) {
 }
 
 function emptyTopic(bt) {
-  return { id: bt.id, name: bt.name || bt.id, note: bt.note || '', chapters: [], nodes: [], edges: [], warnings: [] }
+  return { id: bt.id, name: bt.name || bt.id, note: bt.note || '', source: 'notes', chapters: [], nodes: [], edges: [], warnings: [] }
+}
+
+/** 按内容推断知识形态（手工节点用；问答卡固定 qa）。与前端 knowledge.js 的启发式保持镜像 */
+export function inferNodeKind(content) {
+  const text = String(content || '')
+  const fences = [...text.matchAll(/```[\w+#-]*\n([\s\S]*?)```/g)].map((m) => m[1].length)
+  const codeLen = fences.reduce((a, b) => a + b, 0)
+  const proseLen = text.replace(/```[\s\S]*?```/g, '').length
+  if (codeLen > 0 && codeLen > proseLen) return 'code'
+  return 'concept'
 }
 
 function buildTopic(topicId, name, note, md, extra) {
@@ -251,14 +270,14 @@ function buildTopic(topicId, name, note, md, extra) {
   }
 
   const used = new Set()
-  const push = (label, chapter, content) => {
+  const push = (label, chapter, content, kind) => {
     let id = slug(label)
     while (used.has(id)) id += '-x'
     used.add(id)
-    t.nodes.push({ id: `${topicId}:${id}`, chapter, label, content })
+    t.nodes.push({ id: `${topicId}:${id}`, chapter, label, kind, content })
   }
-  for (const n of nodes) push(n.label, n.chapter ? chapId.get(n.chapter.name) : 'other', n.content.join('\n').replace(/^\n+|\n+$/g, ''))
-  for (const n of extra?.nodes || []) push(n.label, ensureChapter(n.chapter), n.content)
+  for (const n of nodes) push(n.label, n.chapter ? chapId.get(n.chapter.name) : 'other', n.content.join('\n').replace(/^\n+|\n+$/g, ''), 'qa')
+  for (const n of extra?.nodes || []) push(n.label, ensureChapter(n.chapter), n.content, n.kind || inferNodeKind(n.content))
 
   const has = new Set()
   const addEdge = (s, tid2, kind, label) => {
