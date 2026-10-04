@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-10-04T09:16:56.223Z",
+  "generatedAt": "2026-10-04T09:44:41.888Z",
   "engine": "builtin-force",
   "topics": [
     {
@@ -460,6 +460,13 @@
           "content": "**A:**\n- **避免**：RAII + 智能指针，优先 `make_unique`/`make_shared`；new/delete 成对且配 `delete[]`\n- **检测**：\n  - Valgrind / memcheck（Linux）\n  - AddressSanitizer（`-fsanitize=address`，编译期插桩，更快）\n  - `_CrtDumpMemoryLeaks`（Windows CRT）\n  - 重载全局 operator new/delete 记账\n\n> 🔑 记忆口诀：「RAII 防泄漏，ASan/Valgrind 抓泄漏」\n> ⚠️ 常见追问：ASan 的原理？（影子内存 + 编译期插桩）\n\n---"
         },
         {
+          "id": "cpp:operator-new-/-placement-new-是什么-和-new-什么关系",
+          "chapter": "内存与生命周期",
+          "label": "operator new / placement new 是什么？和 new 什么关系？",
+          "kind": "qa",
+          "content": "**A:**\n- `new T(args)` 实际做两件事：① 调 `operator new(sizeof(T))` 分配内存 ② 在该内存上调用构造函数\n- **`operator new`**：只分配内存的函数，可重载（类级/全局），默认版本内部走 malloc；重载它可定制内存来源（内存池/对齐），但不改变构造行为\n- **`placement new`**：`new (ptr) T(args)`，在**给定地址**上构造对象，不分配内存；需手动调 `p->~T()` 析构（对象生命周期自己管理）\n- 典型场景：内存池、容器扩容的原地搬移、共享内存里构造对象、游戏引擎自定义分配器\n\n```cpp\nchar buf[sizeof(T)];\nT* p = new (buf) T(42);   // placement new：在 buf 上构造\np->~T();                  // 必须手动析构\n```\n\n> 🔑 记忆口诀：「new = operator new + 构造；placement new 只管构造不管分配」\n> ⚠️ 常见追问：类里重载 operator new 有什么用？（内存池定制、分配统计、对齐控制）\n\n---"
+        },
+        {
           "id": "cpp:c++-的虚函数是怎么实现的-虚函数表-vtable-原理",
           "chapter": "面向对象",
           "label": "C++ 的虚函数是怎么实现的？虚函数表 (vtable) 原理？",
@@ -500,6 +507,20 @@
           "label": "三/五法则 (Rule of Three / Five)？",
           "kind": "qa",
           "content": "**A:**\n- **三法则**：需要自定义「析构函数、拷贝构造、拷贝赋值」**任意一个**，通常三个都需要（多半在管理资源）\n- **五法则**（C++11）：再加「移动构造、移动赋值」\n- **零法则**：最好用智能指针等 RAII 成员，**一个特殊成员函数都不用写**，让编译器生成的默认版本正确工作\n- 注意：一旦声明了移动构造，拷贝构造会被隐式删除\n\n> 🔑 记忆口诀：「要写就写全（三/五），最好全不写（零）」\n> ⚠️ 常见追问：`= default` 和 `= delete` 的用途？\n\n---"
+        },
+        {
+          "id": "cpp:重载-overload-vs-重写-override-vs-隐藏-hide",
+          "chapter": "面向对象",
+          "label": "重载 (overload) vs 重写 (override) vs 隐藏 (hide)？",
+          "kind": "qa",
+          "content": "**A:**\n| | 重载 | 重写 | 隐藏 |\n|---|---|---|---|\n| 发生位置 | **同一作用域** | 派生类 ↔ 基类**虚函数** | 派生类 ↔ 基类**非虚**/同名不同参 |\n| 条件 | 函数名同、参数不同（返回类型不限） | 签名完全相同 + 基类是 virtual | 同名即隐藏（不管参数） |\n| 绑定 | 编译期重载决议 | **运行期**虚表动态绑定 | 编译期静态绑定 |\n| 关键字 | 无 | `override` 显式声明（推荐） | 用 `using Base::f;` 引入避免 |\n\n- 经典坑：派生类只重写了一个重载版本 → 基类其他重载版本全被**隐藏**；`using Base::f;` 拉回来\n- `override` 让编译器帮你检查签名拼写；`final` 禁止再重写\n\n> 🔑 记忆口诀：「重载看参数同域，重写是虚函数动态绑定，同名遮蔽叫隐藏」\n> ⚠️ 常见追问：为什么基类虚函数和派生类重写函数默认参数不同时会踩坑？（默认参数静态绑定，虚函数动态绑定 → 组合出诡异行为）\n\n---"
+        },
+        {
+          "id": "cpp:含虚函数的对象内存布局是怎样的",
+          "chapter": "面向对象",
+          "label": "含虚函数的对象内存布局是怎样的？",
+          "kind": "qa",
+          "content": "**A:**\n- 单继承：对象头部一个 **vptr**（指向类的 vtable），成员按声明顺序（受对齐影响）排布；vtable 里是函数指针数组 + RTTI/type_info + 到基类的偏移信息\n- `sizeof(空类)` = 1；`sizeof(含虚函数空类)` = 指针大小（只多一个 vptr）\n- **多重继承**：每个含虚函数的基类子对象各有一个 vptr → 对象里有多个 vptr；`this` 指针在跨基类转换时会做**偏移调整**（thunk）\n- 虚继承：加 vbptr/虚基类表解决菱形继承的数据冗余，访问虚基类成员多一次间接\n- 与 C 结构互操作时 vptr 是障碍 → 用 `extern \"C\"` / POD 设计隔离\n\n> 🔑 记忆口诀：「一个虚基类一个 vptr，多继承多指针，转换走 thunk」\n> ⚠️ 常见追问：为什么构造顺序是基类→成员→派生类？（vptr 逐层就位，保证每层构造里调虚函数落到当前层）\n\n---"
         },
         {
           "id": "cpp:const-的各种用法",
@@ -593,6 +614,20 @@
           "content": "**A:**\n- **vector**：插入/删除使**插入点之后**失效；扩容使**全部**失效；`erase` 返回下一个有效迭代器\n- **deque**：头尾插入不影响元素迭代器，中间操作全失效\n- **list**：只有被删节点失效，其他不受影响\n- **map/set**（红黑树）：只有被删元素失效\n- **unordered_map**：rehash 使**所有迭代器**失效（引用不失效）\n- 正确姿势：`it = c.erase(it);`，或 erase-remove / C++20 `std::erase_if`\n\n> 🔑 记忆口诀：「vector 怕搬家，hash 怕重排，树和链表只坏自己」\n> ⚠️ 常见追问：写一个在遍历中安全删除元素的循环\n\n---"
         },
         {
+          "id": "cpp:std-string-的-sso-短字符串优化-是什么",
+          "chapter": "stl-与底层",
+          "label": "std::string 的 SSO（短字符串优化）是什么？",
+          "kind": "qa",
+          "content": "**A:**\n- **短字符串直接存在对象内部的栈缓冲区里**，不分配堆内存；长字符串才指针 + 堆分配（+ 长度 + 容量字段）\n- 各实现阈值不同：libstdc++ 15 字节、libc++ 22 字节、MSVC 15 字节左右\n- 收益：短字符串（日志、名字、键）**零堆分配**，快且对缓存友好；代价：`sizeof(std::string)` 变大（一般 24/32 字节）\n- libc++ 还用 union 复用字段（is_long 标志位藏进容量/指针低位）\n- 相关：`string_view` 只借用不拥有，配合 SSO 场景避免无谓拷贝\n\n> 🔑 记忆口诀：「短串存自身，长串才上堆」\n> ⚠️ 常见追问：为什么 `sizeof(std::string)` 是 24/32 而不是 sizeof(char*)？（SSO 缓冲区 + 长度/容量字段共用空间）\n\n---"
+        },
+        {
+          "id": "cpp:vector-/-list-/-deque-怎么选型",
+          "chapter": "stl-与底层",
+          "label": "vector / list / deque 怎么选型？",
+          "kind": "qa",
+          "content": "**A:**\n| | vector | list | deque |\n|---|---|---|---|\n| 内存 | **连续** | 节点离散 + 前后指针 | 分段连续（map of chunks） |\n| 随机访问 | O(1) | O(n) | O(1)（两次寻址） |\n| 头/尾插入 | 尾 O(1) 均摊 | 两端 O(1) | 两端 O(1) |\n| 中间插入 | O(n) 搬移 | O(1) 定位后（但定位本身 O(n)） | O(n) |\n| 缓存友好 | ★★★ | ★ | ★★ |\n\n- 默认选 **vector**：连续内存的缓存局部性优势经常碾压 list 的理论复杂度优势\n- list 只在**频繁中间拼接、迭代器绝对不能失效、对象巨大移动昂贵**时才值得\n- deque 适合队列/滑动窗口（两头进出）\n\n> 🔑 记忆口诀：「默认 vector；两头 deque；链表三思」\n> ⚠️ 常见追问：为什么「list 中间插入 O(1)」是误导？（先要 O(n) 走过去）\n\n---"
+        },
+        {
           "id": "cpp:大端小端及判断方法",
           "chapter": "底层机制",
           "label": "大端小端及判断方法？",
@@ -612,6 +647,20 @@
           "label": "静态链接 vs 动态链接？",
           "kind": "qa",
           "content": "**A:**\n| | 静态链接 (.a / .lib) | 动态链接 (.so / .dll) |\n|---|---|---|\n| 时机 | 编译链接时拷贝进可执行文件 | **运行时**加载器加载 |\n| 体积 | 可执行文件大 | 小，多进程**共享**一份库 |\n| 更新 | 改库要重新编译整个程序 | 换 .so 即可（注意版本兼容） |\n| 启动/性能 | 启动快、无依赖 | 有加载开销，可能符号查找开销（PLT/GOT 延迟绑定） |\n| 部署 | 单文件即走，无依赖地狱 | 需环境里有所需版本（依赖地狱） |\n\n- 动态库符号延迟绑定：PLT（过程链接表）+ GOT（全局偏移表），首次调用才解析真实地址\n\n> 🔑 记忆口诀：「静态拷进来一劳永逸，动态运行时共享要配套」\n> ⚠️ 常见追问：动态库是怎么被找到的（rpath/LD_LIBRARY_PATH）？为什么会有「同符号多版本」问题？\n\n---"
+        },
+        {
+          "id": "cpp:什么是-c++-abi-动态库升级为什么会破坏兼容",
+          "chapter": "底层机制",
+          "label": "什么是 C++ ABI？动态库升级为什么会破坏兼容？",
+          "kind": "qa",
+          "content": "**A:**\n- **ABI**（Application Binary Interface）：编译产物之间的二进制约定——**名字修饰 (name mangling)、对象布局/大小、虚表布局、调用约定、异常展开、STL 容器内存表示**\n- 源码兼容 ≠ 二进制兼容：只改函数**实现**一般安全；改**类布局**（加/删/改成员、加虚函数、改模板参数）→ 老代码按老偏移访问新对象 → 崩溃\n- C 没有 mangling、无对象布局侵入 → C ABI 极稳定；这就是插件边界、跨编译器边界都爱 `extern \"C\"` + 不透明指针（pImpl）的原因\n- 缓解手段：**Pimpl 惯用法**（头文件只剩指针）、纯 C 接口边界、版本化符号（`.so` soname / Windows Side-by-Side）、固定分配器跨界\n- 不同编译器（MSVC/GCC/Clang）甚至不同大版本（GCC 5 的 dual ABI）STL 类型布局不同 → **不要跨 DLL 边界传 STL 对象**\n\n> 🔑 记忆口诀：「源码兼容易，二进制兼容难；跨库边界走 C 接口 + Pimpl」\n> ⚠️ 常见追问：为什么 UE 的模块接口大量用 `MODULENAME_API` 宏 + 工厂函数？（导出符号控制，隔离 ABI）\n\n---"
+        },
+        {
+          "id": "cpp:windows-下-dll-和-lib-的区别-dll-热重载为什么难",
+          "chapter": "底层机制",
+          "label": "Windows 下 dll 和 lib 的区别？DLL 热重载为什么难？",
+          "kind": "qa",
+          "content": "**A:**\n| | .dll（动态库） | .lib（静态库 / 导入库） |\n|---|---|---|\n| 本质 | 运行时加载的 PE 模块 | 一组 .obj 打包 / dll 的**导入符号表** |\n| 配套 | dll 配一个同名的「导入 .lib」 | 静态 .lib 直接链进 exe |\n- **热重载难点**：旧代码的函数指针/虚表/静态变量还在别人手里（ dangling ）；CRT 状态、线程局部存储、句柄资源跨模块生命周期无法干净移交；C++ ABI 里的类型身份（RTTI/异常）跨模块匹配\n- UE 的做法：编辑器重编译走**重启式重载 / Live Coding**（增量补丁，限同名函数体内修改）；模块卸载前要求所有引用归零（模块句柄引用计数）\n- 实用结论：工具型程序把「可变逻辑」放**独立子进程或脚本层**（Python/Lua），比 DLL 热替换稳得多\n\n> 🔑 记忆口诀：「lib 是死代码拷贝，dll 是运行时伙伴；热重载败在指针还指着旧世界」\n> ⚠️ 常见追问：LoadLibrary 两次同名 dll 会加载两份吗？（按模块名去重，引用计数）\n\n---"
         }
       ],
       "edges": [
@@ -646,6 +695,12 @@
           "label": "下一问"
         },
         {
+          "s": "cpp:内存泄漏如何检测与避免",
+          "t": "cpp:operator-new-/-placement-new-是什么-和-new-什么关系",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
           "s": "cpp:c++-的虚函数是怎么实现的-虚函数表-vtable-原理",
           "t": "cpp:虚函数和纯虚函数的区别",
           "kind": "seq",
@@ -672,6 +727,18 @@
         {
           "s": "cpp:深拷贝-vs-浅拷贝",
           "t": "cpp:三/五法则-rule-of-three-/-five",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "cpp:三/五法则-rule-of-three-/-five",
+          "t": "cpp:重载-overload-vs-重写-override-vs-隐藏-hide",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "cpp:重载-overload-vs-重写-override-vs-隐藏-hide",
+          "t": "cpp:含虚函数的对象内存布局是怎样的",
           "kind": "seq",
           "label": "下一问"
         },
@@ -736,6 +803,18 @@
           "label": "下一问"
         },
         {
+          "s": "cpp:stl-迭代器失效问题",
+          "t": "cpp:std-string-的-sso-短字符串优化-是什么",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "cpp:std-string-的-sso-短字符串优化-是什么",
+          "t": "cpp:vector-/-list-/-deque-怎么选型",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
           "s": "cpp:大端小端及判断方法",
           "t": "cpp:一个-c++-程序从代码到可执行文件的过程",
           "kind": "seq",
@@ -744,6 +823,18 @@
         {
           "s": "cpp:一个-c++-程序从代码到可执行文件的过程",
           "t": "cpp:静态链接-vs-动态链接",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "cpp:静态链接-vs-动态链接",
+          "t": "cpp:什么是-c++-abi-动态库升级为什么会破坏兼容",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "cpp:什么是-c++-abi-动态库升级为什么会破坏兼容",
+          "t": "cpp:windows-下-dll-和-lib-的区别-dll-热重载为什么难",
           "kind": "seq",
           "label": "下一问"
         },
@@ -794,6 +885,591 @@
           "t": "cpp:auto-和-decltype-的区别",
           "kind": "rel",
           "label": "现代特性"
+        },
+        {
+          "s": "cpp:operator-new-/-placement-new-是什么-和-new-什么关系",
+          "t": "cpp:new/delete-和-malloc/free-的区别",
+          "kind": "rel",
+          "label": "new 的两层拆解"
+        },
+        {
+          "s": "cpp:什么是-c++-abi-动态库升级为什么会破坏兼容",
+          "t": "cpp:静态链接-vs-动态链接",
+          "kind": "rel",
+          "label": "链接视角的 ABI"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "ue",
+      "name": "UE与游戏工具",
+      "note": "interview-prep/ue/UE与游戏工具.md",
+      "source": "notes",
+      "chapters": [
+        {
+          "id": "模块与插件",
+          "name": "模块与插件"
+        },
+        {
+          "id": "slate-与编辑器-ui",
+          "name": "Slate 与编辑器 UI"
+        },
+        {
+          "id": "反射与-gc",
+          "name": "反射与 GC"
+        },
+        {
+          "id": "编辑器工程化",
+          "name": "编辑器工程化"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "ue:ue-的模块-module-和插件-plugin-是什么-什么关系",
+          "chapter": "模块与插件",
+          "label": "UE 的模块 (Module) 和插件 (Plugin) 是什么？什么关系？",
+          "kind": "qa",
+          "content": "**A:**\n- **模块**：UE 的编译/链接单元（一个 `.Build.cs`），最终编译成静态/动态库；引擎本身就是几十个模块（Core / CoreUObject / Engine / Slate / UnrealEd…）\n- **插件**：按目录组织的**功能容器**（`/Plugins/xxx/`），可包含一个或多个模块（Runtime/Editor/Server 模块各司其职），可整体开关、可跨项目复用、可上架 Marketplace\n- 关系：插件是「发布/复用视角」，模块是「构建视角」；引擎原生功能也多以插件形式存在（如 Niagara、OnlineSubsystem）\n- 依赖在 `.Build.cs` 里声明：`PublicDependencyModuleNames`（头文件可见）vs `Private…`（仅实现可见）\n\n> 🔑 记忆口诀：「模块管编译，插件管分发；一个插件多个模块」\n> ⚠️ 常见追问：自己写一个最小插件的步骤？（建目录 → .uplugin → Build.cs → 模块类实现 StartupModule/ShutdownModule → regen → 编译）\n\n---"
+        },
+        {
+          "id": "ue:runtime-模块和-editor-模块的区别-能在打包后的游戏里调-editor-api-吗",
+          "chapter": "模块与插件",
+          "label": "Runtime 模块和 Editor 模块的区别？能在打包后的游戏里调 Editor API 吗？",
+          "kind": "qa",
+          "content": "**A:**\n- **Runtime 模块**：打进游戏包，任何目标平台都要能编译运行；**不能依赖** Editor-only 的模块（UnrealEd、SlateEditor 等）\n- **Editor 模块**（`Type: Editor` / `EditorAndProgram`）：只在编辑器目标下编译加载，可以随意用 UnrealEd、PropertyEditor、AssetTools\n- 打包游戏里**没有 Editor 模块的代码**（根本没编进去），所以「Runtime 里调 Editor API」不只是不可以，是**不存在**；运行时确需编辑器能力要走 Commandlet/独立工具进程\n- 编辑器专属功能用 `#if WITH_EDITOR` / `WITH_EDITORONLY_DATA` 隔离，保证双态编译干净\n\n> 🔑 记忆口诀：「Runtime 进包，Editor 只在编辑器；WITH_EDITOR 隔离双态代码」\n> ⚠️ 常见追问：为什么 Runtime 代码里 include 了 Slate 头还能过编译？（SlateCore/Slate 本身是 Runtime 模块，编辑器专用的是 SlateEditor）\n\n---"
+        },
+        {
+          "id": "ue:slate-是什么-ue-为什么不用-qt-而自研-ui",
+          "chapter": "slate-与编辑器-ui",
+          "label": "Slate 是什么？UE 为什么不用 Qt 而自研 UI？",
+          "kind": "qa",
+          "content": "**A:**\n- Slate 是 UE 的**声明式 C++ UI 框架**：`SNew/SAssignNew` 链式构建控件树，属性绑定（TAttribute + lambda）自动刷新，全平台可用（编辑器 + 游戏内 HUD）\n- 不用 Qt 的原因：\n  1. **许可证/体积**：编辑器要随引擎免费分发，Qt 商业授权与静态体积是负担\n  2. **深度定制**：编辑器 UI 与引擎渲染管线、主题、DPI、工具链深度耦合，自研可控\n  3. **无反射依赖**：Slate 不依赖 Qt 的元对象系统，用 C++ 模板 + 委托实现绑定\n- 代价：C++ 写 UI 啰嗦 → UE 提供 **UMG**（可视化蓝图 UI，编译成 Slate 包装）给游戏侧，编辑器侧则配合 Editor Scripting/Python\n\n> 🔑 记忆口诀：「Slate 声明式 C++ UI；许可 + 定制 + 管线耦合是自研动因」\n> ⚠️ 常见追问：Slate 控件为什么只能在 Game Thread 创建/修改？（UI 状态与渲染命令缓冲非线程安全）\n\n---"
+        },
+        {
+          "id": "ue:让你写一个简单的-editor-窗口插件-步骤是什么",
+          "chapter": "slate-与编辑器-ui",
+          "label": "让你写一个简单的 Editor 窗口插件，步骤是什么？",
+          "kind": "qa",
+          "content": "**A:**\n1. 建插件骨架（Plugin Wizard 选 \"Editor Standalone Window\"）→ 得到 Editor 模块\n2. 模块 `StartupModule` 里注册命令：\n   - `FGlobalTabmanager::RegisterTabSpawner` + `RegisterNomadTabSpawner` 挂一个 Tab\n   - 或 `UToolMenus::RegisterMenuAction` 加菜单项 / `FLevelEditorModule` 加 toolbar 按钮\n3. Tab 生成的 lambda 里 `SNew(SDockTab)` 包一个**自定义 Slate 控件**（`SCompoundWidget`，`Construct` 里排布 SVerticalBox/SButton/SEditableTextBox…）\n4. 业务逻辑：读配置（`FJson`/DataTable）、调 LLM 服务（HTTP 模块 `FHttpModule`）、把结果回填控件\n5. 收尾：`ShutdownModule` 反注册 TabSpawner，避免卸载后悬垂\n- 注意点：耗时请求异步回调回 Game Thread（`AsyncTask(ENamedThreads::GameThread, …)`）再刷 Slate\n\n> 🔑 记忆口诀：「注册 TabSpawner → DockTab → SCompoundWidget → 异步回主线程刷 UI」\n> ⚠️ 常见追问：怎么把窗口输出打印到 Output Log？（UE_LOG 分类日志；窗口内用 SListView/SLogView）\n\n---"
+        },
+        {
+          "id": "ue:ue-的反射系统是怎么回事-uht-在编译期做了什么",
+          "chapter": "反射与-gc",
+          "label": "UE 的反射系统是怎么回事？UHT 在编译期做了什么？",
+          "kind": "qa",
+          "content": "**A:**\n- UE 给 C++ 加反射的方式：宏标记（`UCLASS() / UPROPERTY() / UFUNCTION() / USTRUCT()`）+ **UHT（UnrealHeaderTool）** 预处理生成 `.generated.h`\n- UHT 扫描宏 → 生成 `Z_Registration` 代码：为每个类构造 `UClass` 元数据（属性表 `FProperty`、函数表 `UFunction`、元信息），并注册进类型系统\n- 有了反射才能：**序列化（EditAnywhere/SaveGame）、蓝图暴露（BlueprintCallable）、网络同步、GC 引用追踪、编辑器细节面板**——UE 的编辑器生态全建立在反射上\n- 限制：模板/泛型不反射、动态数组要 `TArray`、委托要特定宏；C++ 原生 class 默认不在类型系统里\n\n> 🔑 记忆口诀：「宏标记 → UHT 生成元数据 → UClass 运行时可用」\n> ⚠️ 常见追问：为什么 `UPROPERTY()` 加不加影响 GC？（加了才进引用追踪图，否则 UObject 可能被回收成悬垂指针）\n\n---"
+        },
+        {
+          "id": "ue:uobject-的-gc-机制-根集是什么-循环引用怎么办",
+          "chapter": "反射与-gc",
+          "label": "UObject 的 GC 机制？根集是什么？循环引用怎么办？",
+          "kind": "qa",
+          "content": "**A:**\n- UE GC 是**标记-清扫**式，但**靠反射元数据遍历引用**（不像常规 GC 猜指针）：从**根集**（GRootSet：AddToRoot 的对象、引擎常驻对象）出发，沿 `UPROPERTY` 声明的引用链标记可达对象，不可达的清扫\n- **循环引用天然没问题**：可达性分析不依赖引用计数，A↔B 若整体不可达一起回收（和 shared_ptr 的死结完全相反）\n- 但**没写 `UPROPERTY()` 的裸 `UObject*` 不被追踪** → 要么标记、要么 `TWeakObjectPtr`、要么手动 AddToRoot 保命\n- GC 触发：增量式（时间片）在编辑器/游戏运行中分帧清扫，避免卡顿；`ForceGarbageCollection` 可手动\n- 普通 C++ 对象（非 UObject）不受这套管理 → 用智能指针；**不要混用**两套生命周期\n\n> 🔑 记忆口诀：「根集出发沿 UPROPERTY 标记，循环引用不慌，漏标引用才慌」\n> ⚠️ 常见追问：FStreamable/软引用 (TSoftObjectPtr) 和 GC 的关系？（软引用不算硬引用，加载期间防回收另有机制）\n\n---"
+        },
+        {
+          "id": "ue:ue-的异步任务系统-编辑器里为什么耗时操作不能放主线程",
+          "chapter": "编辑器工程化",
+          "label": "UE 的异步任务系统？编辑器里为什么耗时操作不能放主线程？",
+          "kind": "qa",
+          "content": "**A:**\n- 体系：**TaskGraph**（`FGraphEvent`/`FAsyncTask`，依赖图调度）、`Async(EAsyncExecution::ThreadPool, …)` 便捷封装、`FCriticalSection`/`TQueue` 等原语、专用线程（FRenderCommandFence 隔离渲染线程）\n- **Slate/Game Thread 是单线程消息循环**：编辑器 UI、输入、资产操作都在 Game Thread；卡住它 = 界面冻结，长任务（导入、编译、LLM 请求）必须异步\n- 模式：工作线程算完 → **切回 Game Thread 更新 Slate**（`AsyncTask(ENamedThreads::GameThread, …)` 或 `FSimpleDelegateGraphTask`）；数据用 `TSharedRef` 跨线程传递\n- 进度反馈：`FSlowTask`（带进度条的可取消任务）适合批处理工具\n\n> 🔑 记忆口诀：「重活进线程池，回主线程再碰 UI；FSlowTask 给进度」\n> ⚠️ 常见追问：两个线程同时 LoadObject 同一资产会怎样？（资产系统非线程安全 → 用 AsyncLoad/StreamableManager）\n\n---"
+        },
+        {
+          "id": "ue:windows-进程间通信-ipc-方案对比-ue-编辑器和外部-llm-服务怎么通信",
+          "chapter": "编辑器工程化",
+          "label": "Windows 进程间通信 (IPC) 方案对比？UE 编辑器和外部 LLM 服务怎么通信？",
+          "kind": "qa",
+          "content": "**A:**\n| 方案 | 特点 | 适用 |\n|---|---|---|\n| **localhost HTTP/REST** | 简单通用、跨语言、易调试（curl） | 编辑器 ↔ 本地推理服务（首选） |\n| 命名管道 | 流式、低开销、Windows 原生 | 高频双向消息 |\n| 共享内存 + 事件 | 最快，但要自己做同步/版本 | 大块数据（批量嵌入结果） |\n| gRPC | 强契约、流式、跨机 | 团队级服务化 |\n- UE 侧：`FHttpModule` 发请求天然异步、回调回 Game Thread；gRPC 需要自带第三方库模块\n- LLM 服务独立进程的额外收益：**崩溃隔离**（推理崩不带走编辑器）、**依赖隔离**（Python/CUDA 环境不污染 UE）、可独立升级\n- 注意：长请求要可取消 + 超时；编辑器退出时的在途请求要优雅关停\n\n> 🔑 记忆口诀：「HTTP 起步，管道提速，共享内存压榨；独立进程 = 崩溃隔离」\n> ⚠️ 常见追问：为什么不用直接在编辑器进程里链推理库？（ABI/依赖/崩溃/升级全被绑死）\n\n---"
+        },
+        {
+          "id": "ue:c++-调-python-推理后端有什么坑",
+          "chapter": "编辑器工程化",
+          "label": "C++ 调 Python 推理后端有什么坑？",
+          "kind": "qa",
+          "content": "**A:**\n1. **GIL**：Python 同一时刻只执行一个线程的字节码，C++ 起多线程调 Python 并不会更快 → 要多进程或让 Python 侧把重活丢 C 扩展\n2. **ABI/版本地狱**：Python 版本、numpy/PyTorch 的 C 运行时与编译器绑定，跨模块传 C++ 对象（stl/python 对象指针）易崩 → **边界只走纯数据**（JSON/protobuf/共享内存）\n3. **打包分发**：解释器 + 依赖 + 模型权重的体积与路径问题（conda/venv 嵌入）\n4. **崩溃隔离缺失**：嵌入模式（pybind11 直接链）里 Python 段错误 = 编辑器一起死 → **子进程 + IPC** 更稳\n5. 启动/预热：模型加载慢 → 常驻服务预热，编辑器只连不载\n\n> 🔑 记忆口诀：「GIL 限并发，边界走纯数据，稳就开子进程」\n> ⚠️ 常见追问：pybind11 嵌入和子进程怎么选？（原型嵌入快，生产子进程稳）\n\n---"
+        },
+        {
+          "id": "ue:游戏工业化管线大致流程-ai-能插在哪几环",
+          "chapter": "编辑器工程化",
+          "label": "游戏工业化管线大致流程？AI 能插在哪几环？",
+          "kind": "qa",
+          "content": "**A:**\n- 主链路：**策划配置/文档 → 美术资产制作 → 导入(DCC→UE 资产) → 编辑器内组装(关卡/蓝图/配置表) → 预览/验证 → 烘焙打包 → 运行时**\n- 周边系统：版本控制（Perforce）、CI（ nightly build / 自动化测试）、资产校验、本地化、性能回归\n- AI 可插入点（按落地成熟度）：\n  1. **配置/数据侧**：配置问答（RAG 查表结构/字段含义）、批量生成/迁移配置、脏数据检查\n  2. **文档侧**：设计文档检索摘要、新人问答机器人\n  3. **代码侧**：补全/评审/生成 Editor 脚本（AI-Coding 本身就是产品）\n  4. **美术辅助**：贴图/模型初稿生成（AIGC）、批量命名规范检查\n  5. **QA 侧**：日志聚类归因、冒烟用例生成\n- 共同前提：**人工确认环节 + 审计**，AI 产物不直接进版本库\n\n> 🔑 记忆口诀：「管线五步走，AI 先啃配置文档代码；产物必经人工闸门」\n> ⚠️ 常见追问：为什么配置侧最好落地？（结构化程度高、可校验、错了易回滚）\n\n---"
+        },
+        {
+          "id": "ue:长生命周期-editor-程序-内存/句柄泄漏怎么排查",
+          "chapter": "编辑器工程化",
+          "label": "长生命周期 Editor 程序，内存/句柄泄漏怎么排查？",
+          "kind": "qa",
+          "content": "**A:**\n- 特点：编辑器一开一整天，**小泄漏也会累积到 OOM**；句柄（file handle / GDI / socket）泄漏比内存更隐蔽\n- 内存排查：\n  - UE 内建：`obj list class=`、LLM（Low Level Memory tracker）、`MemReport -full`、MLE（Memory Lexer）看 UObject 增长\n  - 重载 operator new 记账 / 分配器钩子打调用栈统计\n  - Windows：CRT Debug Heap（`_CrtSetDbgFlag`）、UMDH、WinDbg `!heap -s`、VMMap 看段增长\n- 句柄排查：任务管理器加「句柄」列 / Process Explorer 看句柄类型分布，定位到没 Close 的资源；UE 里资产用完 `MarkAsGarbage` + 置空\n- 方法论：**快照对比**（相同时刻/相同操作 N 次取差分）、固定操作脚本复现、先看「只涨不降」的曲线\n\n> 🔑 记忆口诀：「长跑看累积，快照做差分；内存看 MemReport，句柄看 Process Explorer」\n> ⚠️ 常见追问：怎么设计防泄漏的 Editor 工具？（RAII + 智能指针管句柄；资产引用用 weak；退出前泄漏断言）\n\n---"
+        }
+      ],
+      "edges": [
+        {
+          "s": "ue:ue-的模块-module-和插件-plugin-是什么-什么关系",
+          "t": "ue:runtime-模块和-editor-模块的区别-能在打包后的游戏里调-editor-api-吗",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "ue:slate-是什么-ue-为什么不用-qt-而自研-ui",
+          "t": "ue:让你写一个简单的-editor-窗口插件-步骤是什么",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "ue:ue-的反射系统是怎么回事-uht-在编译期做了什么",
+          "t": "ue:uobject-的-gc-机制-根集是什么-循环引用怎么办",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "ue:ue-的异步任务系统-编辑器里为什么耗时操作不能放主线程",
+          "t": "ue:windows-进程间通信-ipc-方案对比-ue-编辑器和外部-llm-服务怎么通信",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "ue:windows-进程间通信-ipc-方案对比-ue-编辑器和外部-llm-服务怎么通信",
+          "t": "ue:c++-调-python-推理后端有什么坑",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "ue:c++-调-python-推理后端有什么坑",
+          "t": "ue:游戏工业化管线大致流程-ai-能插在哪几环",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "ue:游戏工业化管线大致流程-ai-能插在哪几环",
+          "t": "ue:长生命周期-editor-程序-内存/句柄泄漏怎么排查",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "ue:让你写一个简单的-editor-窗口插件-步骤是什么",
+          "t": "ue:slate-是什么-ue-为什么不用-qt-而自研-ui",
+          "kind": "rel",
+          "label": "窗口就是 Slate 控件树"
+        },
+        {
+          "s": "ue:windows-进程间通信-ipc-方案对比-ue-编辑器和外部-llm-服务怎么通信",
+          "t": "ue:长生命周期-editor-程序-内存/句柄泄漏怎么排查",
+          "kind": "rel",
+          "label": "独立进程隔离崩溃与泄漏"
+        },
+        {
+          "s": "ue:c++-调-python-推理后端有什么坑",
+          "t": "ue:windows-进程间通信-ipc-方案对比-ue-编辑器和外部-llm-服务怎么通信",
+          "kind": "rel",
+          "label": "边界只走纯数据"
+        },
+        {
+          "s": "ue:游戏工业化管线大致流程-ai-能插在哪几环",
+          "t": "ue:windows-进程间通信-ipc-方案对比-ue-编辑器和外部-llm-服务怎么通信",
+          "kind": "rel",
+          "label": "AI 服务独立于编辑器进程"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "ai",
+      "name": "LLM应用工程",
+      "note": "interview-prep/ai/LLM应用工程.md",
+      "source": "notes",
+      "chapters": [
+        {
+          "id": "llm-基础",
+          "name": "LLM 基础"
+        },
+        {
+          "id": "检索增强与工具调用",
+          "name": "检索增强与工具调用"
+        },
+        {
+          "id": "agent-与工程化",
+          "name": "Agent 与工程化"
+        },
+        {
+          "id": "安全与评测",
+          "name": "安全与评测"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "ai:transformer-大致结构-为什么-llm-天然适合做工具调用",
+          "chapter": "llm-基础",
+          "label": "Transformer 大致结构？为什么 LLM 天然适合做工具调用？",
+          "kind": "qa",
+          "content": "**A:**\n- 结构：输入嵌入 + 位置编码 → N 层 **自注意力（Q/K/V，捕捉任意距离依赖）+ FFN** → 自回归 next-token 预测；Decoder-only（GPT/Llama/Qwen 系）是主流\n- 为什么适合工具调用：\n  1. **自回归生成**能按 schema 逐 token 产出结构化输出（JSON/函数名/参数）\n  2. **指令遵循**（RLHF/对齐后）让「按规则办」成为可训练的行为\n  3. 上下文学习（ICL）：把工具说明放进 prompt 即可扩展能力，不用重训\n- 边界：模型只是「输出了一段像调用的文本」，**执行、校验、重试全在工程侧**\n\n> 🔑 记忆口诀：「注意力看全局，自回归出结构；执行校验永远在代码侧」\n> ⚠️ 常见追问：为什么 temperature 设低适合工具调用？（要确定性采样，减少发散）\n\n---"
+        },
+        {
+          "id": "ai:llama.cpp-/-onnx-runtime-/-vllm-各是什么定位",
+          "chapter": "llm-基础",
+          "label": "Llama.cpp / ONNX-Runtime / vLLM 各是什么定位？",
+          "kind": "qa",
+          "content": "**A:**\n| | Llama.cpp | ONNX Runtime | vLLM |\n|---|---|---|---|\n| 形态 | C/C++ 推理引擎（GGUF） | 通用推理运行时（ONNX 格式） | Python 服务框架（CUDA 为主） |\n| 优势 | CPU/Mac 也能跑、量化好、单文件部署 | 跨平台、图优化、DirectML/EP 灵活 | **PagedAttention 高吞吐**、连续批处理 |\n| 适合 | 开发机本地跑 7B、嵌入桌面工具 | Windows GPU (DirectML)、多后端 | 团队级多用户服务 |\n- 选型直觉：**个人编辑器伴生进程 → Llama.cpp；Windows GPU + 已有 ONNX 链路 → ORT；多人并发服务 → vLLM**\n- 量化（FP16→INT8/INT4）：体积显存近似按位宽比例降、速度升；INT4 对 7B 级损失小但**长链推理/代码类任务掉点更明显**，需评测再上\n\n> 🔑 记忆口诀：「本机 cpp，Windows ORT，并发 vLLM；量化先测再上」\n> ⚠️ 常见追问：7B INT4 大概占多少内存？（权重 ~4GB 级，加 KV 缓存上下文越长越多）\n\n---"
+        },
+        {
+          "id": "ai:rag-的基本流程",
+          "chapter": "检索增强与工具调用",
+          "label": "RAG 的基本流程？",
+          "kind": "qa",
+          "content": "**A:**\n1. **离线**：文档切分 (chunking) → embedding 向量化 → 存向量库（带元数据：来源/版本/权限）\n2. **在线**：用户 query → 向量化 → 检索 top-k（向量 + 可选 BM25 混合）→ **重排 (rerank)** → 拼进 prompt（带来源标注）→ LLM 生成\n- 关键组件：embedding 模型、向量库（FAISS/Milvus/pgvector）、reranker、prompt 模板\n- 工程要点：**引用溯源**（答案标注来自哪几条）、权限过滤在检索层做、库随文档版本重建\n\n> 🔑 记忆口诀：「切、嵌、存、检、排、拼、答」\n> ⚠️ 常见追问：为什么要 rerank？（召回的粗排向量模型 ≠ 精排；cross-encoder 精度高但慢，只对 top-k 用）\n\n---"
+        },
+        {
+          "id": "ai:chunking-策略有哪些-为什么切法很影响效果",
+          "chapter": "检索增强与工具调用",
+          "label": "Chunking 策略有哪些？为什么切法很影响效果？",
+          "kind": "qa",
+          "content": "**A:**\n- 固定长度（简单但切断语义）、**按结构**（标题/章节/表格整块）、滑动窗口带重叠（保上下文连续）、语义切分（embedding 相似度断句）、父子块（小块检索、大块喂模型）\n- 影响：切太碎 → 检索命中但缺上下文答不完整；切太大 → 噪声稀释、embedding 区分度下降、token 浪费\n- 游戏文档特性：**配置表字段互相依赖、术语黑话多、版本迭代快** → 表格要整块、元数据要带版本、术语表注入 prompt\n\n> 🔑 记忆口诀：「小块检索准，大块回答全；表格别切碎，版本要标注」\n> ⚠️ 常见追问：怎么评估切分效果？（建评测集看召回率/答案命中率，A/B 不同切法）\n\n---"
+        },
+        {
+          "id": "ai:function-calling-/-tool-calling-的原理-schema-起什么作用",
+          "chapter": "检索增强与工具调用",
+          "label": "Function Calling / Tool Calling 的原理？schema 起什么作用？",
+          "kind": "qa",
+          "content": "**A:**\n- 流程：开发者把**工具清单**（名称 + 描述 + **JSON Schema 参数定义**）随 prompt 发给模型 → 模型判断需要工具时输出结构化调用意图（函数名 + 符合 schema 的参数 JSON）→ **工程侧执行** → 结果回传模型 → 继续生成\n- schema 的作用：约束参数结构（类型/必填/枚举）= 给模型的「API 说明书」+ 工程侧**校验依据**（模型输出必须过 schema 校验才能执行）\n- 模型「知道何时调用」靠：工具描述写清楚 + 系统提示引导 + 训练时学过类似模式\n- 工程铁律：**模型只申请，不执行**；执行前 schema 校验 + 权限检查 + 超参限制，失败可回传错误让模型重试\n\n> 🔑 记忆口诀：「schema 是说明书也是关卡；模型申请，代码执行」\n> ⚠️ 常见追问：模型输出的参数不合法怎么办？（校验拒绝 → 把校验错误信息回喂 → 限次重试 → 降级人工）\n\n---"
+        },
+        {
+          "id": "ai:工具很多-几十上百个-时-token-消耗大-怎么优化",
+          "chapter": "检索增强与工具调用",
+          "label": "工具很多（几十上百个）时 token 消耗大，怎么优化？",
+          "kind": "qa",
+          "content": "**A:**\n1. **分层路由**：先用小模型/检索把请求分到「工具域」，只展开该域 schema\n2. **按需暴露**：两段式——第一步模型只选工具名（拿简表），第二步展开该工具完整 schema 再生成参数\n3. **工具 RAG**：把工具描述也做成向量检索，按 query 动态带 top-k 工具\n4. **注册中心**：工具元数据集中管理（版本/权限/owner），schema 可缓存、可灰度\n5. 压缩 schema：描述精简、枚举收敛、默认值外置文档\n- 本质：把「全部工具塞上下文」变成「**检索式的动态工具集**」\n\n> 🔑 记忆口诀：「先路由后展开，工具也做检索」\n> ⚠️ 常见追问：MCP 和这套什么关系？（MCP 是标准化的工具接入协议，路由/裁剪仍要自己做）\n\n---"
+        },
+        {
+          "id": "ai:mcp-model-context-protocol-是什么-价值和局限",
+          "chapter": "检索增强与工具调用",
+          "label": "MCP（Model Context Protocol）是什么？价值和局限？",
+          "kind": "qa",
+          "content": "**A:**\n- Anthropic 提出的开放协议：把「模型 ↔ 工具/数据源」的接入标准化——MCP Server 暴露 tools/resources/prompts，客户端（宿主应用）统一发现、调用\n- 价值：**生态复用**（一个 Server 多个客户端用）、接入解耦（工具作者不用为每个宿主写适配）、安全边界统一（权限/审计挂在一处）\n- 局限（面试要主动说）：\n  1. 只解决「接入协议」，**不做路由/裁剪/校验策略**——工具多了 token 问题依旧\n  2. 安全责任还在宿主：恶意 Server、prompt 注入经工具回传、数据外流都要自己防\n  3. 生态早期，跨厂商能力对齐参差\n- 游戏工具链定位：内部工具接 MCP 相当于「LLM 版插件协议」，但要配自研的权限与审计层\n\n> 🔑 记忆口诀：「MCP 管接入标准化，不管策略与安全」\n> ⚠️ 常见追问：MCP Server 返回的内容也会注入 prompt，怎么防？（当不可信输入：过滤 + 标记来源 + 限制其再触发工具）\n\n---"
+        },
+        {
+          "id": "ai:rag-vs-微调怎么选",
+          "chapter": "检索增强与工具调用",
+          "label": "RAG vs 微调怎么选？",
+          "kind": "qa",
+          "content": "**A:**\n| | RAG | 微调 (SFT/LoRA) |\n|---|---|---|\n| 解决 | 知识**时效/私有**、可溯源 | 风格/格式/领域能力 |\n| 更新成本 | 重入库即可（分钟级） | 重新训练（天级） |\n| 可解释 | 带引用溯源 | 黑盒 |\n| 幻觉 | 检索质量兜底可缓解 | 不解决幻觉 |\n- 经验法则：**知识用 RAG，行为用微调**；两者可叠（微调改善指令遵循 + RAG 供知识）\n- 游戏场景：策划查配置 = 典型 RAG；让模型稳定输出公司内部 DSL → 考虑小规模微调\n\n> 🔑 记忆口诀：「知识检索补，行为微调教」\n> ⚠️ 常见追问：LoRA 是什么？（低秩适配：冻结原权重，只训小矩阵插值，显存小见效快）\n\n---"
+        },
+        {
+          "id": "ai:agent-的基本分类-记忆分哪几种",
+          "chapter": "agent-与工程化",
+          "label": "Agent 的基本分类？记忆分哪几种？",
+          "kind": "qa",
+          "content": "**A:**\n- 分类：**反应式**（感知→规则→动作，无世界模型）、**规划型/审慎式**（目标分解 → 计划 → 执行 → 观察 → 修正，即 ReAct/Plan-Execute 循环）、混合式\n- LLM Agent 常见组件：规划（任务分解/反思）、工具（Function Calling）、记忆、环境反馈\n- 记忆类型：**短期**（上下文窗口内的对话/中间结果）、**长期**（向量库存事实，跨会话检索）、**情景/工作记忆**（当前任务工作集）；工程上还有「摘要压缩」维持短期不溢出\n- 游戏工具岗现实：**多数需求是确定性 Workflow + 局部 LLM 节点**，全自主 Agent 只用于低风险探索性任务\n\n> 🔑 记忆口诀：「反应式靠规则，规划式靠循环；记忆分短期长期情景」\n> ⚠️ 常见追问：ReAct 是什么？（Reason+Act 交替：思考 → 调工具 → 观察 → 再思考）\n\n---"
+        },
+        {
+          "id": "ai:workflow-vs-agent-游戏工具里更推荐哪个",
+          "chapter": "agent-与工程化",
+          "label": "Workflow vs Agent？游戏工具里更推荐哪个？",
+          "kind": "qa",
+          "content": "**A:**\n- **Workflow**：开发者预定义流程图（DAG），LLM 只在指定节点做理解/生成——**确定、可测、可控、好排错**\n- **Agent**：模型自主决定下一步（循环 + 工具）——灵活但**不可复现、成本失控、错误放大**，需要预算/步数上限与护栏\n- 推荐口径（米哈游偏好）：**能用 Workflow 绝不用 Agent**；把「开放理解」收敛成节点，把「流程、校验、回滚」留给代码\n- 判断标准：路径是否可枚举（可枚举 → Workflow）、错误代价（高 → Workflow + 人工确认）、是否需要长程探索（才考虑 Agent + 预算）\n\n> 🔑 记忆口诀：「路径能画图就走图，自主循环是最后手段」\n> ⚠️ 常见追问：怎么给 Agent 上护栏？（最大步数/token 预算、工具白名单、每步校验、人工确认门）\n\n---"
+        },
+        {
+          "id": "ai:langchain-/-llamaindex-解决什么问题-什么场景不适合",
+          "chapter": "agent-与工程化",
+          "label": "LangChain / LlamaIndex 解决什么问题？什么场景不适合？",
+          "kind": "qa",
+          "content": "**A:**\n- 定位：**应用编排胶水层**——统一的模型/向量库/工具抽象、现成的 chain/RAG/Agent 组件、快速搭原型\n- 价值：生态广、迭代快，POC 阶段省大量样板代码\n- 不适合/缺点（面试高频坑，别吹万能）：\n  1. 抽象泄漏：调试要穿透多层包装，报错难定位\n  2. 版本剧烈变动，生产锁定成本高\n  3. 默认链路偏通用：**性能/成本敏感、并发大的服务往往直接手写**（薄薄一层 HTTP + 自研 RAG 管线更可控）\n  4. 内网/离线环境装依赖麻烦\n- 表达口径：「原型用 LangChain 提速，生产核心链路自研 + 只借它的好抽象」\n\n> 🔑 记忆口诀：「胶水提速原型，生产核心自己写」\n> ⚠️ 常见追问：不用 LangChain，RAG 管线要自己写哪些？（切分、嵌入批处理、检索+重排、prompt 组装、评测回路）\n\n---"
+        },
+        {
+          "id": "ai:什么是幻觉-工程上有哪些缓解手段",
+          "chapter": "agent-与工程化",
+          "label": "什么是幻觉？工程上有哪些缓解手段？",
+          "kind": "qa",
+          "content": "**A:**\n- 定义：模型**自信地输出与事实不符/编造**的内容（源于概率生成的本质，不是 bug）\n- 工程缓解（除 prompt 外）：\n  1. **RAG 挂锚**：答案必须引用检索片段，无依据就拒答\n  2. **约束解码/结构化输出**：JSON schema、枚举字段从源头限制可生成空间\n  3. **校验器**：规则/类型/业务校验（配置必须过 schema、路径必须存在）\n  4. **多路投票/自洽性**：多次采样比对，不一致降级人工\n  5. **低温度 + 拒答设计**：允许「不知道」，UI 明示置信与来源\n  6. **人工复核闭环**：高风险操作（写配置/发版）必经确认，反馈数据回流优化\n- 核心观念：**幻觉不能消除只能约束**；把 LLM 放在「建议者」位，决策与执行留确定性代码\n\n> 🔑 记忆口诀：「检索挂锚、解码约束、校验兜底、人工闸门」\n> ⚠️ 常见追问：怎么度量幻觉率？（抽检标注 + 自动事实核验对齐评测集）\n\n---"
+        },
+        {
+          "id": "ai:prompt-injection-是什么-防御思路",
+          "chapter": "安全与评测",
+          "label": "Prompt Injection 是什么？防御思路？",
+          "kind": "qa",
+          "content": "**A:**\n- 攻击：**不可信文本混入上下文**（网页、文档、工具返回、配置注释）携带指令，劫持模型行为（泄露 prompt、越权调工具）——「SQL 注入的 LLM 版」\n- 典型场景：RAG 检索到的文档里藏「忽略之前指令」；LLM 生成的代码里夹带指令\n- 防御分层：\n  1. **输入隔离**：不可信内容打标记/分隔符，声明「这只是数据」\n  2. **权限最小化**：工具按会话授权、危险操作白名单 + 人工确认（即使被注入也打不出去）\n  3. **输出过滤**：生成内容过敏感规则/审计日志\n  4. **双模型架构**：不可信文本先过一个无工具的「读取模型」提炼，再给有权限的执行模型\n- 承认现状：**没有 100% 防御**，靠纵深 + 限权把爆炸半径压到最小\n\n> 🔑 记忆口诀：「数据指令分离，权限最小，纵深防御」\n> ⚠️ 常见追问：间接注入和直接注入区别？（直接=用户输入即攻击；间接=经检索/工具回传的第三方内容）\n\n---"
+        },
+        {
+          "id": "ai:ai-工具上线后怎么评测-真的提效",
+          "chapter": "安全与评测",
+          "label": "AI 工具上线后怎么评测「真的提效」？",
+          "kind": "qa",
+          "content": "**A:**\n- 两层指标：\n  - **自动指标**（可高频跑）：任务成功率、输出过校验率、平均延迟/token 成本、检索命中率（recall@k）、幻觉率（评测集抽检）、失败归因分布\n  - **人工/业务指标**（周月级）：**采纳率**（生成结果被接受比例）、人工复核率、单任务耗时前后对比（如 15min→2min）、覆盖任务比例、返工率\n- 方法：**上线前建金标评测集**（真实任务 + 期望输出），每次改 prompt/模型/参数回归跑；灰度 + A/B；用户反馈一键上报回流成评测用例\n- 面试表达范式：「覆盖率 75%、复核率 20%、耗时降 87%」这种**量化 + 诚实短板**的口径\n\n> 🔑 记忆口诀：「自动看成功率成本，人工看采纳与耗时；评测集先于上线」\n> ⚠️ 常见追问：采纳率高但耗时没降说明什么？（可能只是「看起来有用」，要查流程瓶颈是否在别处）\n\n---"
+        }
+      ],
+      "edges": [
+        {
+          "s": "ai:transformer-大致结构-为什么-llm-天然适合做工具调用",
+          "t": "ai:llama.cpp-/-onnx-runtime-/-vllm-各是什么定位",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "ai:rag-的基本流程",
+          "t": "ai:chunking-策略有哪些-为什么切法很影响效果",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "ai:chunking-策略有哪些-为什么切法很影响效果",
+          "t": "ai:function-calling-/-tool-calling-的原理-schema-起什么作用",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "ai:function-calling-/-tool-calling-的原理-schema-起什么作用",
+          "t": "ai:工具很多-几十上百个-时-token-消耗大-怎么优化",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "ai:工具很多-几十上百个-时-token-消耗大-怎么优化",
+          "t": "ai:mcp-model-context-protocol-是什么-价值和局限",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "ai:mcp-model-context-protocol-是什么-价值和局限",
+          "t": "ai:rag-vs-微调怎么选",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "ai:agent-的基本分类-记忆分哪几种",
+          "t": "ai:workflow-vs-agent-游戏工具里更推荐哪个",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "ai:workflow-vs-agent-游戏工具里更推荐哪个",
+          "t": "ai:langchain-/-llamaindex-解决什么问题-什么场景不适合",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "ai:langchain-/-llamaindex-解决什么问题-什么场景不适合",
+          "t": "ai:什么是幻觉-工程上有哪些缓解手段",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "ai:prompt-injection-是什么-防御思路",
+          "t": "ai:ai-工具上线后怎么评测-真的提效",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "ai:rag-的基本流程",
+          "t": "ai:什么是幻觉-工程上有哪些缓解手段",
+          "kind": "rel",
+          "label": "检索质量决定幻觉率"
+        },
+        {
+          "s": "ai:rag-vs-微调怎么选",
+          "t": "ai:rag-的基本流程",
+          "kind": "rel",
+          "label": "取舍建立在对流程的理解"
+        },
+        {
+          "s": "ai:mcp-model-context-protocol-是什么-价值和局限",
+          "t": "ai:function-calling-/-tool-calling-的原理-schema-起什么作用",
+          "kind": "rel",
+          "label": "MCP 是工具接入标准化"
+        },
+        {
+          "s": "ai:prompt-injection-是什么-防御思路",
+          "t": "ai:什么是幻觉-工程上有哪些缓解手段",
+          "kind": "rel",
+          "label": "不可信输入要隔离"
+        },
+        {
+          "s": "ai:ai-工具上线后怎么评测-真的提效",
+          "t": "ai:什么是幻觉-工程上有哪些缓解手段",
+          "kind": "rel",
+          "label": "幻觉率是核心指标"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "mihoyo",
+      "name": "米哈游AI工具岗",
+      "note": "interview-prep/mihoyo/米哈游AI工具岗.md",
+      "source": "notes",
+      "chapters": [
+        {
+          "id": "岗位认知",
+          "name": "岗位认知"
+        },
+        {
+          "id": "面试流程与-ai-coding",
+          "name": "面试流程与 AI-Coding"
+        },
+        {
+          "id": "高频设计题",
+          "name": "高频设计题"
+        },
+        {
+          "id": "终面与-hr",
+          "name": "终面与 HR"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "mihoyo:这个岗位到底是做什么的-和-gameplay-ai-/-算法岗的区别",
+          "chapter": "岗位认知",
+          "label": "这个岗位到底是做什么的？和 Gameplay AI / 算法岗的区别？",
+          "kind": "qa",
+          "content": "**A:**\n- JD 核心：① UE4/5 编辑器里开发带 AI 能力的工具/插件 ② 用 LLM/AIGC/Agent 提升策划美术程序效率 ③ 把推理能力（本地/远端）稳妥集成进客户端/编辑器（延迟/稳定性/沙箱/版本） ④ 搭 RAG、工具调用、轻量 Agent ⑤ 与引擎团队协作探索推理后端/量化/Windows 适配\n- 一句话：**C++ 游戏工具工程师 + LLM 应用工程，偏客户端/Editor**\n- 区别：\n  - Gameplay/NPC AI：行为树/状态机/寻路，做游戏内角色智能\n  - 大模型算法：训练/微调/推理优化研究\n  - 本岗：**工程落地者**，把现成 AI 能力产品化进生产管线（内部称「工业化 AI 工具链」）\n- 加分项：UE Slate/模块/反射、Editor Scripting、ONNX-RT/vLLM/Llama.cpp、LangChain、RAG、Function-Calling\n\n> 🔑 记忆口诀：「不是做游戏里的 AI，是做做游戏的人的 AI」\n> ⚠️ 常见追问：为什么米哈游要这个岗？（内容生产慢是核心痛点，AI 提效指向产能）\n\n---"
+        },
+        {
+          "id": "mihoyo:米哈游的面试流程-ai-coding-的评分逻辑是什么",
+          "chapter": "面试流程与-ai-coding",
+          "label": "米哈游的面试流程？AI-Coding 的评分逻辑是什么？",
+          "kind": "qa",
+          "content": "**A:**\n- 链路：**笔试 → 一面（基础+项目+轻算法）→ 二面（架构+设计题+中偏难算法）→ 三面（Leader：业务认知+深挖）→ HR 面**；每轮 45-75min，社招有时合并\n- 笔试 = 常规选择 + 2 道编程（LeetCode 中等~偏难：数组/字符串/模拟/DFS/滑窗）+ **AI-Coding 大题**（米厂独有）\n- AI-Coding 评分：**结果正确性仅 40%**；工程交付 30%、提示词设计 20%、产出校验 30%、异常归因+迭代 10%\n- 考的是**你怎么驾驭 AI 做工具**：方案、Prompt 示例、校验逻辑、失败处理、优缺点、改进方向\n- 大坑：只写「调用 LLM API」、无脑贴 AI 输出、不考虑内网/无公网/版本/权限/幻觉/延迟/人工复核 → 低分\n\n> 🔑 记忆口诀：「结果四成，过程六成；校验交付提示词是得分点」\n> ⚠️ 常见追问：监考下 AI-Coding 怎么用 AI？（当场展示 prompt 设计 + 对输出的质疑与修正，而不是抄）\n\n---"
+        },
+        {
+          "id": "mihoyo:ai-coding-/-用-ai-做工具的答题框架是什么",
+          "chapter": "面试流程与-ai-coding",
+          "label": "AI-Coding / 用 AI 做工具的答题框架是什么？",
+          "kind": "qa",
+          "content": "**A:**\n五段式作答（可套一切 AI-Coding 与「怎么用 AI」问题）：\n1. **任务拆解**：哪些子步骤交给 AI、哪些必须确定性代码（能枚举的不过模型）\n2. **Prompt 设计**：角色 + 上下文（内网约束/数据样例）+ 输出 schema + few-shot + 失败示例；展示实际 prompt 文本\n3. **产出校验**：schema 校验、规则校验、编译/运行测试、沙箱执行——**展示校验代码思路**\n4. **失败处理**：重试策略（带错误回喂）、降级路径（回退人工/模板）、监控与审计日志\n5. **复盘迭代**：量化指标（成功率/采纳率/耗时）、已知短板、下一步改进\n- 红线：不说「AI 无所不能」；每一步都体现「我在控制 AI」\n\n> 🔑 记忆口诀：「拆解→提示→校验→兜底→复盘」\n> ⚠️ 常见追问：校验失败的信息怎么回喂？（把校验错误结构化拼回上下文，限次重试，超限转人工）\n\n---"
+        },
+        {
+          "id": "mihoyo:设计题-策划-excel/配置表知识库问答助手-嵌入-ue-编辑器-怎么设计",
+          "chapter": "高频设计题",
+          "label": "设计题：策划 Excel/配置表知识库问答助手（嵌入 UE 编辑器）怎么设计？",
+          "kind": "qa",
+          "content": "**A:**\n**架构**（分层说）：\n- **数据层**：配置解析服务监视 P4 版本 → 表结构/字段含义/枚举值/变更历史入向量库（**带版本与权限元数据**）；术语表（黑话→规范名）单独维护\n- **服务层**（独立进程，编辑器不嵌推理）：RAG 管线（检索 + 重排 + 引用溯源）+ LLM 推理（内网部署）；Prompt 模板带「仅依据检索片段回答，无依据则说不确定」\n- **编辑器层**：Slate 窗口（问答 + 引用跳转到表格行）；打点上报（采纳/纠错）\n**风险与对策**（必讲，是得分点）：\n- 幻觉 → 引用溯源 + 拒答设计 + 人工纠错回流\n- 表结构频繁变 → 按版本重建索引，答案标注「基于版本 X」\n- 数据权限 → 检索层按用户权限过滤，不只靠 prompt\n- 延迟 → 异步 UI + 常见问题缓存；服务预热\n- 降级 → 检索失败/超时回退关键词查询；整服务不可用回退文档链接\n- 审计 → 全量问答日志，敏感表访问告警\n\n> 🔑 记忆口诀：「数据带版本权限，服务独立进程，答案必须带引用，降级永远备好」\n> ⚠️ 常见追问：为什么不做实时连 Excel？（版本一致性差、权限绕过、性能不可控；以版本库为准）\n\n---"
+        },
+        {
+          "id": "mihoyo:设计题-7b-模型在-windows-开发机本地跑给-editor-用-怎么选型",
+          "chapter": "高频设计题",
+          "label": "设计题：7B 模型在 Windows 开发机本地跑给 Editor 用，怎么选型？",
+          "kind": "qa",
+          "content": "**A:**\n- 先问清约束：**显存/内存多大？几个人用？延迟要求？内网能否用 GPU 服务器？**\n- 单机单人 → **Llama.cpp（GGUF）**：CPU+iGPU 都能跑、INT4/INT5 量化、单文件部署、崩溃不影响编辑器（独立进程）；7B INT4 权重 ~4GB 级\n- 有 NVIDIA 卡 + 已有 ONNX 工具链 → **ONNX Runtime + DirectML/CUDA**：图优化、Windows 生态友好\n- 多人共享 → 集中一台 GPU 机器跑 **vLLM/类 vLLM 服务**，编辑器全走 HTTP（利用率最高）\n- 必讲的工程账：**内存/显存占用、首 token 延迟、吞吐、量化掉点评测**（拿业务评测集跑 FP16 vs INT4 对比再定）；启动预热与常驻\n- 兜底：本地失败自动路由到远端服务（若允许）或降级规则助手\n\n> 🔑 记忆口诀：「单人 cpp 量化，Windows ORT，多人 vLLM；掉点先评测再上线」\n> ⚠️ 常见追问：CPU 跑 7B 的体验？（INT4 下生成速度可用但长输出慢；交互式问答可接受，批量任务需排队）\n\n---"
+        },
+        {
+          "id": "mihoyo:设计题-llm-生成的-ue-配置/蓝图片段-怎么保证不把项目搞崩",
+          "chapter": "高频设计题",
+          "label": "设计题：LLM 生成的 UE 配置/蓝图片段，怎么保证不把项目搞崩？",
+          "kind": "qa",
+          "content": "**A:**\n**原则：LLM 产物永远当不可信输入处理**。四道闸门：\n1. **沙箱**：生成物不直接进项目——先落到隔离工作区/临时资产；预览用只读副本\n2. **校验**：schema/类型校验 → 语法/编译校验（蓝图编译过）→ 规则检查（命名/依赖/路径合法）→ lint（团队规范）\n3. **回滚**：一切改动走版本控制原子提交（生成物 = 一次可整体 revert 的 changelist）；diff 视图人工比对\n4. **权限**：按用户/目录授权，敏感资产只读；破坏性操作（删除/批量改）二次确认 + 审批流\n- 附加：审计日志（谁、什么 prompt、生成什么、采纳与否）、灰度（先只读建议模式跑两周）、生成物打标记（方便全量清理）\n- UI 设计：明确「AI 建议 / 已应用」状态，人工一键采纳/拒绝\n\n> 🔑 记忆口诀：「沙箱隔离、校验分层、原子回滚、权限审批、全程审计」\n> ⚠️ 常见追问：蓝图片段怎么校验？（编译通过 + 图结构合法性 + 引用资产存在性 + 与模板 diff 白名单）\n\n---"
+        },
+        {
+          "id": "mihoyo:设计题-游戏领域-rag-有什么特殊难点-怎么优化",
+          "chapter": "高频设计题",
+          "label": "设计题：游戏领域 RAG 有什么特殊难点？怎么优化？",
+          "kind": "qa",
+          "content": "**A:**\n- 难点：\n  1. **术语黑话**（内部缩写/黑话/中英混杂）→ 通用 embedding 召回差\n  2. **版本迭代快**（一个版本后字段含义就变）\n  3. **配置互相依赖**（字段含义取决于所在表/枚举/引用目标）\n  4. **文档非结构化**（策划口头约定、表格注释、群聊结论散落）\n- 优化：\n  - 术语表 + 同义改写在检索前归一化 query\n  - 索引带（表名、版本、字段上下文）元数据，检索先过滤再相似\n  - 表格整块 chunk + 字段级父子块；依赖字段连带其引用目标一起检索\n  - 权威源优先级（设计文档 > 表注释 > 群聊记录），rerank 时加权\n  - 用户纠错回流：错例入库做评测集，持续迭代\n\n> 🔑 记忆口诀：「黑话归一、版本标注、依赖连带、来源分级」\n> ⚠️ 常见追问：怎么评游戏 RAG 的效果？（按表/按字段类型分桶统计命中率 + 人工抽检答案正确率）\n\n---"
+        },
+        {
+          "id": "mihoyo:怎么理解-ai-赋能游戏工业化生产-哪一环最枯燥-最适合-ai",
+          "chapter": "终面与-hr",
+          "label": "怎么理解「AI 赋能游戏工业化生产」？哪一环最枯燥、最适合 AI？",
+          "kind": "qa",
+          "content": "**A:**\n- 答题骨架：**别谈 AI NPC，谈生产管线**——米哈游内容体量大（原神/星铁/绝区零多线），瓶颈在**人肉环节的产能**而非创意\n- 举例（展示你玩过且思考过）：\n  - 大世界/关卡：批量摆放下限草、命名规范、重复配置（AI 辅助+规则）\n  - 策划：配置表字段查询/迁移/脏数据检查（RAG+脚本生成）\n  - 美术：资产命名/归档/入库检查、贴图初稿（AIGC 打底人工精修）\n  - 程序：Editor 脚本生成、代码评审辅助、日志归因\n- 收口观点：**AI 替代的是「重复且可校验」的部分，把人留给判断与创意**；提效要量化（耗时、返工率）并配人工闸门\n- 反向认知（加分）：太智能反而不可控——生产管线要确定性优先，智能做辅助\n\n> 🔑 记忆口诀：「谈管线不谈 NPC；重复可校验的先上 AI；量化提效配闸门」\n> ⚠️ 常见追问：你玩米哈游游戏时观察到哪些环节像人肉堆的？（准备 1-2 个具体观察，落到工具设想）\n\n---"
+        },
+        {
+          "id": "mihoyo:ai-是辅助人而非替代人-智能与确定性怎么平衡-怎么答",
+          "chapter": "终面与-hr",
+          "label": "「AI 是辅助人而非替代人」「智能与确定性怎么平衡」怎么答？",
+          "kind": "qa",
+          "content": "**A:**\n- 平衡框架：按**错误代价**和**路径可枚举性**分四象限——\n  - 可枚举 + 高代价 → 纯规则/代码（不许 AI 碰）\n  - 可枚举 + 低代价 → AI 建议 + 一键人工采纳\n  - 不可枚举 + 高代价 → AI 生成 + 强校验 + 审批（沙箱/回滚）\n  - 不可枚举 + 低代价 → AI 直出 + 抽检\n- 「辅助人」落到产品形态：AI 的输出默认是**建议态**（diff/预览），采纳动作永远是人；把人从重复劳动挪到判断位\n- 价值观口径（真诚不尬）：工程师的职责是让不可靠的能力可靠地落地；对「技术宅拯救世界」的理解 = 用技术把创作者从体力活里解放出来\n\n> 🔑 记忆口诀：「代价定闸门，枚举定流程；输出皆建议，采纳在人」\n> ⚠️ 常见追问：有没有 AI 全自动的场景？（低代价可回滚的：批量重命名、格式转换、初稿生成）\n\n---"
+        },
+        {
+          "id": "mihoyo:反问环节问什么-备考优先级怎么排",
+          "chapter": "终面与-hr",
+          "label": "反问环节问什么？备考优先级怎么排？",
+          "kind": "qa",
+          "content": "**A:**\n- 反问（展示落地思维，不问薪资）：\n  1. 团队现在已落地哪些 AI 工具？哪个体感最好/最痛？\n  2. 编辑器和推理服务现在的架构边界？本地还是集中推理？\n  3. AI 工具的评测和灰度机制是怎么做的？\n  4. 和引擎团队/策划工作流的协作方式？\n- 备考优先级（木桶效应：C++ 不行挂、不懂 UE 挂、只会调包不懂工程也挂）：\n  1. **C++ 硬基础**（Effective C++ / STL 底层 / 内存 / 多线程 / Windows 调试）\n  2. **UE 通识**（跑通一个 Editor 插件：Slate 窗口 + 加载配置；懂模块/反射/GC）\n  3. **AI 工程**（RAG 全链路、Function-Calling、幻觉防御、本地部署动手过一次）\n  4. 算法 200-300 题（中等为主，重边界与可读性）\n  5. AI-Coding 专项（prompt+校验+测试+降级的肌肉记忆）\n- 不投入：深推反向传播、训大模型、高级图形学、RL 游戏 AI\n\n> 🔑 记忆口诀：「C++/UE/AI 工程三块木板，先补最短；算法重稳健」\n> ⚠️ 常见追问：你的短板是什么？（诚实 + 已在补的动作，别说「没短板」）\n\n---"
+        },
+        {
+          "id": "mihoyo:这个岗的常见坑点有哪些",
+          "chapter": "终面与-hr",
+          "label": "这个岗的常见坑点有哪些？",
+          "kind": "qa",
+          "content": "**A:**\n1. **混淆岗位**：上来狂讲 AI NPC/强化学习 = 岗位理解错误，直接减分\n2. **概念党**：每个名词没动手例子、简历每句扛不住深挖 → 追问两层就穿帮\n3. **吹 AI 无所不能**：米厂工程师极务实，**LLM = 不可靠组件**，必须有防御/校验/兜底\n4. AI-Coding 过程 > 结果：展示你控制 AI，而不是被 AI 控制\n5. 只蹭风口不关心游戏工业化：适当了解米哈游游戏（但别尬吹剧情）\n6. HR 面也刷人：不吐槽前司、不过度功利、挫折经历真诚讲成长\n\n> 🔑 记忆口诀：「岗要对口、例要动手、AI 要防、过程要控、心要真诚」\n> ⚠️ 常见追问：为什么选客户端 AI 工具而不是纯后端 AI/纯算法？（答：想做离生产痛点最近的工程，C++ 与 AI 工程交叉正是兴趣与积累所在）\n\n---"
+        }
+      ],
+      "edges": [
+        {
+          "s": "mihoyo:米哈游的面试流程-ai-coding-的评分逻辑是什么",
+          "t": "mihoyo:ai-coding-/-用-ai-做工具的答题框架是什么",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "mihoyo:设计题-策划-excel/配置表知识库问答助手-嵌入-ue-编辑器-怎么设计",
+          "t": "mihoyo:设计题-7b-模型在-windows-开发机本地跑给-editor-用-怎么选型",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "mihoyo:设计题-7b-模型在-windows-开发机本地跑给-editor-用-怎么选型",
+          "t": "mihoyo:设计题-llm-生成的-ue-配置/蓝图片段-怎么保证不把项目搞崩",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "mihoyo:设计题-llm-生成的-ue-配置/蓝图片段-怎么保证不把项目搞崩",
+          "t": "mihoyo:设计题-游戏领域-rag-有什么特殊难点-怎么优化",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "mihoyo:怎么理解-ai-赋能游戏工业化生产-哪一环最枯燥-最适合-ai",
+          "t": "mihoyo:ai-是辅助人而非替代人-智能与确定性怎么平衡-怎么答",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "mihoyo:ai-是辅助人而非替代人-智能与确定性怎么平衡-怎么答",
+          "t": "mihoyo:反问环节问什么-备考优先级怎么排",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "mihoyo:反问环节问什么-备考优先级怎么排",
+          "t": "mihoyo:这个岗的常见坑点有哪些",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "mihoyo:ai-coding-/-用-ai-做工具的答题框架是什么",
+          "t": "mihoyo:设计题-策划-excel/配置表知识库问答助手-嵌入-ue-编辑器-怎么设计",
+          "kind": "rel",
+          "label": "评分维度即答题框架"
+        },
+        {
+          "s": "mihoyo:设计题-7b-模型在-windows-开发机本地跑给-editor-用-怎么选型",
+          "t": "mihoyo:设计题-策划-excel/配置表知识库问答助手-嵌入-ue-编辑器-怎么设计",
+          "kind": "rel",
+          "label": "架构题互为组件"
+        },
+        {
+          "s": "mihoyo:设计题-llm-生成的-ue-配置/蓝图片段-怎么保证不把项目搞崩",
+          "t": "mihoyo:ai-coding-/-用-ai-做工具的答题框架是什么",
+          "kind": "rel",
+          "label": "校验与兜底是得分点"
+        },
+        {
+          "s": "mihoyo:设计题-游戏领域-rag-有什么特殊难点-怎么优化",
+          "t": "mihoyo:设计题-策划-excel/配置表知识库问答助手-嵌入-ue-编辑器-怎么设计",
+          "kind": "rel",
+          "label": "难点即优化点"
+        },
+        {
+          "s": "mihoyo:这个岗位到底是做什么的-和-gameplay-ai-/-算法岗的区别",
+          "t": "mihoyo:反问环节问什么-备考优先级怎么排",
+          "kind": "rel",
+          "label": "理解岗位才能排优先级"
+        },
+        {
+          "s": "mihoyo:怎么理解-ai-赋能游戏工业化生产-哪一环最枯燥-最适合-ai",
+          "t": "mihoyo:这个岗位到底是做什么的-和-gameplay-ai-/-算法岗的区别",
+          "kind": "rel",
+          "label": "业务认知建立在岗位理解上"
         }
       ],
       "warnings": []

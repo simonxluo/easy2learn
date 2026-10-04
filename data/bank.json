@@ -1,8 +1,7 @@
 {
   "meta": {
-    "name": "面经题库（操作系统 + C++）",
-    "version": 1,
-    "updatedAt": "2026-10-04T07:42:25.218Z"
+    "name": "面经题库（OS + C++ + UE + LLM + 米哈游）",
+    "version": 1
   },
   "topics": [
     {
@@ -14,6 +13,21 @@
       "id": "cpp",
       "name": "C++",
       "note": "interview-prep/language/编程语言.md"
+    },
+    {
+      "id": "ue",
+      "name": "UE与游戏工具",
+      "note": "interview-prep/ue/UE与游戏工具.md"
+    },
+    {
+      "id": "ai",
+      "name": "LLM应用工程",
+      "note": "interview-prep/ai/LLM应用工程.md"
+    },
+    {
+      "id": "mihoyo",
+      "name": "米哈游AI工具岗",
+      "note": "interview-prep/mihoyo/米哈游AI工具岗.md"
     }
   ],
   "notesRoots": [
@@ -944,6 +958,208 @@
         ]
       },
       "id": "q055"
+    },
+    {
+      "type": "single",
+      "topic": "ue",
+      "difficulty": 2,
+      "tags": [
+        "UE模块"
+      ],
+      "stem": "关于 UE 的 Runtime 模块和 Editor 模块，下列说法正确的是？",
+      "options": [
+        "Editor 模块也会被打进正式游戏包",
+        "Runtime 模块可以依赖 UnrealEd 等 Editor-only 模块",
+        "打包后的游戏里根本没有 Editor 模块的代码，所以运行时调不到 Editor API",
+        "两者没有任何区别，只是目录不同"
+      ],
+      "answer": 2,
+      "analysis": "Editor 模块只在编辑器目标下编译加载；Runtime 进包且不能依赖 Editor-only 模块。双态代码用 WITH_EDITOR 隔离。",
+      "knowledge": "- 模块是编译单元（.Build.cs），插件是按目录组织的功能容器\n- Editor 模块只在编辑器编译加载；Runtime 进包\n- WITH_EDITOR / WITH_EDITORONLY_DATA 隔离双态代码",
+      "id": "q056"
+    },
+    {
+      "type": "single",
+      "topic": "ue",
+      "difficulty": 3,
+      "tags": [
+        "UE",
+        "GC"
+      ],
+      "stem": "UE 的 UObject 垃圾回收，下列描述正确的是？",
+      "options": [
+        "引用计数方式，循环引用会内存泄漏",
+        "标记-清扫：从根集沿 UPROPERTY 引用链标记可达对象",
+        "每帧全量扫描所有 C++ 裸指针",
+        "和 shared_ptr 的机制完全一致"
+      ],
+      "answer": 1,
+      "analysis": "UE GC 靠反射元数据遍历 UPROPERTY 引用做可达性标记，循环引用不构成问题；但没标 UPROPERTY 的裸 UObject* 不被追踪，可能被回收成悬垂。",
+      "knowledge": "- 根集（AddToRoot 等）出发 → 沿 UPROPERTY 标记 → 清扫不可达\n- 循环引用天然可回收（可达性分析不依赖计数）\n- 裸 UObject* 未标 UPROPERTY = 不被追踪",
+      "id": "q057"
+    },
+    {
+      "type": "judge",
+      "topic": "ue",
+      "difficulty": 2,
+      "tags": [
+        "Slate"
+      ],
+      "stem": "Slate 控件可以在任意工作线程直接创建和修改。",
+      "answer": false,
+      "analysis": "Slate 状态非线程安全，只能在 Game Thread 创建/修改；工作线程算完要用 AsyncTask(ENamedThreads::GameThread) 切回主线程再刷 UI。",
+      "knowledge": "- 编辑器 UI/输入/资产操作都在 Game Thread\n- 异步模式：线程池干活 → 回主线程更新 Slate\n- 长任务用 FSlowTask 提供进度与取消",
+      "id": "q058"
+    },
+    {
+      "type": "qa",
+      "topic": "ue",
+      "difficulty": 3,
+      "tags": [
+        "Editor插件"
+      ],
+      "stem": "简述写一个简单 UE Editor 窗口插件的主要步骤。",
+      "answer": "① 插件骨架（Editor 模块 + .uplugin）；② StartupModule 里 RegisterNomadTabSpawner 注册 Tab；③ Tab lambda 里 SNew(SDockTab) 包自定义 SCompoundWidget（Slate 布局）；④ 业务逻辑（读配置、FHttpModule 异步请求）；⑤ 回调用 AsyncTask 切回 Game Thread 更新控件；⑥ ShutdownModule 反注册。",
+      "id": "q059"
+    },
+    {
+      "type": "single",
+      "topic": "ai",
+      "difficulty": 2,
+      "tags": [
+        "FunctionCalling"
+      ],
+      "stem": "Function Calling 中，JSON Schema 的核心作用是？",
+      "options": [
+        "加快模型推理速度",
+        "约束工具参数结构：既是给模型的说明书，也是工程侧校验依据",
+        "加密传输参数",
+        "替代模型的系统提示词"
+      ],
+      "answer": 1,
+      "analysis": "schema 告诉模型参数的类型/必填/枚举；模型输出的参数必须先过 schema 校验 + 权限检查才能执行。模型只申请，代码执行。",
+      "knowledge": "- 模型输出的是「调用意图」，执行永远在工程侧\n- 校验失败 → 错误信息回喂 → 限次重试 → 降级人工",
+      "id": "q060"
+    },
+    {
+      "type": "single",
+      "topic": "ai",
+      "difficulty": 3,
+      "tags": [
+        "幻觉"
+      ],
+      "stem": "下列哪项【不属于】幻觉的工程缓解手段？",
+      "options": [
+        "RAG 引用溯源 + 无依据拒答",
+        "结构化输出约束解码",
+        "高风险操作人工确认闸门",
+        "把 temperature 调到 1.5 增加随机性"
+      ],
+      "answer": 3,
+      "analysis": "缓解幻觉要降随机（低温度）、挂锚（RAG 引用）、约束（schema）、兜底（人工复核）。调高 temperature 只会更飘。",
+      "knowledge": "- 检索挂锚、解码约束、校验兜底、人工闸门\n- 幻觉只能约束不能消除：LLM 放建议位，决策留确定性代码",
+      "id": "q061"
+    },
+    {
+      "type": "judge",
+      "topic": "ai",
+      "difficulty": 3,
+      "tags": [
+        "MCP"
+      ],
+      "stem": "接入了 MCP 协议就自动解决了「工具太多导致 token 消耗大」的问题。",
+      "answer": false,
+      "analysis": "MCP 只标准化工具/数据源的接入方式（发现、调用、格式），不做路由、裁剪、校验策略——工具一多还是要自己做分层路由 / 按需暴露 schema / 工具 RAG。",
+      "knowledge": "- MCP 价值：接入标准化、生态复用、解耦宿主\n- 局限：不管路由裁剪，安全责任仍在宿主",
+      "id": "q062"
+    },
+    {
+      "type": "qa",
+      "topic": "ai",
+      "difficulty": 2,
+      "tags": [
+        "RAG"
+      ],
+      "stem": "简述 RAG 的基本流程（离线 + 在线）。",
+      "answer": "离线：文档切分(chunking) → embedding 向量化 → 存向量库（带来源/版本/权限元数据）。在线：query 向量化 → 检索 top-k（可混合 BM25）→ rerank 重排 → 带来源标注拼进 prompt → LLM 生成并引用溯源。",
+      "id": "q063"
+    },
+    {
+      "type": "single",
+      "topic": "mihoyo",
+      "difficulty": 2,
+      "tags": [
+        "AI-Coding"
+      ],
+      "stem": "米哈游 AI-Coding 大题中，「结果正确性」约占多少权重？",
+      "options": [
+        "100%",
+        "约 40%，其余看工程交付/提示词/校验/迭代",
+        "约 10%",
+        "不看重结果"
+      ],
+      "answer": 1,
+      "analysis": "结果正确性 40%、工程交付 30%、提示词设计 20%、产出校验 30%、异常归因+迭代 10%（按公开拆解）。考怎么驾驭 AI 而不是抄答案。",
+      "knowledge": "- 五段式：拆解→提示→校验→兜底→复盘\n- 展示「我在控制 AI」",
+      "id": "q064"
+    },
+    {
+      "type": "judge",
+      "topic": "mihoyo",
+      "difficulty": 1,
+      "tags": [
+        "岗位认知"
+      ],
+      "stem": "「游戏客户端 AI 工具开发工程师」的主要工作是做游戏内的 AI 怪物和 NPC 行为。",
+      "answer": false,
+      "analysis": "这是 Gameplay AI。本岗是把 AI 嵌入 UE 编辑器与工业化管线（配置生成、资源辅助、代码辅助、文档问答等），是 C++ 工具工程 + LLM 应用工程。",
+      "knowledge": "- 一句话：做「做游戏的人」的 AI 工具\n- 面试狂讲 AI NPC/强化学习 = 岗位理解错误",
+      "id": "q065"
+    },
+    {
+      "type": "qa",
+      "topic": "mihoyo",
+      "difficulty": 3,
+      "tags": [
+        "设计题"
+      ],
+      "stem": "LLM 生成的 UE 配置/蓝图片段，怎么保证不会把项目搞崩？（答题要点）",
+      "answer": "原则：LLM 产物永远当不可信输入。四道闸门：① 沙箱——先进隔离工作区/临时资产，预览用只读副本；② 校验——schema/类型 → 编译（蓝图可编译）→ 规则/命名/依赖检查；③ 回滚——改动走版本控制原子提交，可整体 revert，diff 人工比对；④ 权限——目录级授权 + 破坏性操作二次确认/审批。附加：全程审计日志、生成物打标、灰度先只读建议模式。",
+      "id": "q066"
+    },
+    {
+      "type": "single",
+      "topic": "cpp",
+      "difficulty": 3,
+      "tags": [
+        "内存",
+        "new"
+      ],
+      "stem": "关于 placement new，下列说法正确的是？",
+      "options": [
+        "它会自动分配堆内存",
+        "它在给定地址上构造对象，不分配内存，需要手动调析构",
+        "它只能用于 POD 类型",
+        "它是 malloc 的别名"
+      ],
+      "answer": 1,
+      "analysis": "new = operator new(分配) + 构造；placement new 跳过分配，在给定内存上构造，生命周期自己管（手动 p->~T()）。内存池/容器原地搬移/共享内存常用。",
+      "knowledge": "- new T(args) 两步：operator new + 构造\n- placement new：new (ptr) T(args)；配 p->~T()\n- 场景：内存池、扩容搬移、共享内存",
+      "id": "q067"
+    },
+    {
+      "type": "judge",
+      "topic": "cpp",
+      "difficulty": 3,
+      "tags": [
+        "STL",
+        "string"
+      ],
+      "stem": "std::string 的 SSO 优化意味着短字符串也会在堆上分配内存。",
+      "answer": false,
+      "analysis": "SSO（短字符串优化）恰好相反：短串直接存在对象内部的栈缓冲区，零堆分配；长串才走指针+堆。libstdc++ 约 15 字节、libc++ 约 22 字节。",
+      "knowledge": "- 短串存自身（栈缓冲），长串才上堆\n- 收益：零分配、缓存友好；代价 sizeof(string) 变大",
+      "id": "q068"
     }
   ]
 }
