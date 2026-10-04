@@ -1,0 +1,949 @@
+{
+  "meta": {
+    "name": "面经题库（操作系统 + C++）",
+    "version": 1,
+    "updatedAt": "2026-10-04T07:42:25.218Z"
+  },
+  "topics": [
+    {
+      "id": "os",
+      "name": "操作系统",
+      "note": "interview-prep/os/操作系统.md"
+    },
+    {
+      "id": "cpp",
+      "name": "C++",
+      "note": "interview-prep/language/编程语言.md"
+    }
+  ],
+  "notesRoots": [
+    "interview-prep"
+  ],
+  "questions": [
+    {
+      "type": "single",
+      "topic": "os",
+      "difficulty": 1,
+      "tags": [
+        "进程线程"
+      ],
+      "stem": "关于进程和线程，下列说法正确的是？",
+      "options": [
+        "进程是 CPU 调度的基本单位，线程是资源分配的基本单位",
+        "线程是 CPU 调度的基本单位，进程是资源分配的基本单位",
+        "进程和线程都是资源分配的基本单位",
+        "同一进程内的线程拥有完全独立的地址空间"
+      ],
+      "answer": 1,
+      "analysis": "口诀「进程管资源，线程跑执行」。同进程线程共享地址空间（堆/全局/fd），但各自有独立栈和寄存器。",
+      "knowledge": "- **进程**是资源分配的基本单位，**线程**是 CPU 调度的基本单位\n- 线程切换无需切换页表/TLB，成本远低于进程切换\n- 线程崩溃会带崩整个进程；进程之间互不影响",
+      "id": "q001"
+    },
+    {
+      "type": "single",
+      "topic": "os",
+      "difficulty": 2,
+      "tags": [
+        "epoll",
+        "IO复用"
+      ],
+      "stem": "epoll_wait 相比 select 每次遍历全部 fd，其高效的核心原因是？",
+      "options": [
+        "epoll 使用了更多的内核线程",
+        "epoll 把 fd 存在哈希表里",
+        "内核只返回就绪的 fd（就绪链表 + 回调机制）",
+        "epoll 一次可以监听更多的 CPU 核"
+      ],
+      "answer": 2,
+      "analysis": "epoll_create 建红黑树管理 fd，事件到来时回调挂到就绪链表，epoll_wait 只看就绪链表 → O(1)。",
+      "knowledge": "| | select | epoll |\n|---|---|---|\n| 上限 | 1024 | 无 |\n| 结构 | bitmap | 红黑树+就绪链表 |\n| 复杂度 | O(n) | O(1) |\n\n- LT（水平触发）默认；ET（边沿触发）必须配非阻塞 IO + 循环读到 EAGAIN",
+      "id": "q002"
+    },
+    {
+      "type": "single",
+      "topic": "os",
+      "difficulty": 2,
+      "tags": [
+        "IPC"
+      ],
+      "stem": "通常认为最快的进程间通信方式是？为什么？",
+      "options": [
+        "管道，因为实现最简单",
+        "消息队列，因为有格式",
+        "共享内存，因为数据不需要在内核态和用户态之间来回拷贝",
+        "socket，因为可以全双工"
+      ],
+      "answer": 2,
+      "analysis": "共享内存多进程映射同一块物理内存，零拷贝；但需要配合信号量/互斥锁做同步。",
+      "knowledge": "- 管道：半双工、亲缘进程\n- 消息队列：内核消息链表，两次拷贝\n- **共享内存：最快，零拷贝**，需配同步原语\n- socket：可跨主机",
+      "id": "q003"
+    },
+    {
+      "type": "single",
+      "topic": "os",
+      "difficulty": 2,
+      "tags": [
+        "内存管理"
+      ],
+      "stem": "TLB（Translation Lookaside Buffer）缓存的内容是？",
+      "options": [
+        "最近访问的内存数据",
+        "最近使用的虚拟页号 → 物理页号映射（页表项）",
+        "磁盘块的地址映射",
+        "CPU 指令的译码结果"
+      ],
+      "answer": 1,
+      "analysis": "TLB = 页表的 Cache。TLB miss 才走多级页表；进程切换要刷新，ASID 可避免全刷。",
+      "knowledge": "- MMU 里的**页表项缓存**\n- 命中 → 直接得到物理地址\n- 与 CPU Cache 的区别：缓存对象不同（地址映射 vs 数据）",
+      "id": "q004"
+    },
+    {
+      "type": "single",
+      "topic": "os",
+      "difficulty": 3,
+      "tags": [
+        "缺页"
+      ],
+      "stem": "缺页中断处理程序把所需页面调入内存并更新页表之后，CPU 接下来会？",
+      "options": [
+        "从下一条指令继续执行",
+        "重新执行触发缺页的那条指令",
+        "向进程发送 SIGSEGV",
+        "调度到其他进程"
+      ],
+      "answer": 1,
+      "analysis": "缺页对指令透明：恢复现场后**重新执行触发缺页的指令**，这次页表项已有效。非法访问才是 SIGSEGV。",
+      "knowledge": "缺页流程：中断 → 查合法性 → 找空闲页框（无则置换，脏页写回）→ 调页 → 更新页表 → **重执行指令**",
+      "id": "q005"
+    },
+    {
+      "type": "single",
+      "topic": "os",
+      "difficulty": 3,
+      "tags": [
+        "epoll"
+      ],
+      "stem": "epoll ET（边沿触发）模式为什么必须配合非阻塞 IO 并循环 read 到 EAGAIN？",
+      "options": [
+        "因为 ET 模式不支持阻塞 IO 系统调用",
+        "因为 ET 只在状态变化时通知一次，没读完的数据不会再触发通知，会丢失",
+        "因为阻塞 IO 在 ET 模式下会死锁",
+        "因为 ET 模式下内核缓冲区更大"
+      ],
+      "answer": 1,
+      "analysis": "ET 只通知一次；剩余数据若不一次读完（循环 read 直到 EAGAIN），之后再无通知事件 → 数据滞留。",
+      "knowledge": "- LT：没读完会反复通知（默认）\n- ET：只在「有新数据到来」这一边沿通知一次 → 必须**非阻塞 + 循环读到 EAGAIN**",
+      "id": "q006"
+    },
+    {
+      "type": "single",
+      "topic": "os",
+      "difficulty": 2,
+      "tags": [
+        "锁"
+      ],
+      "stem": "什么场景下适合用自旋锁而不是互斥锁？",
+      "options": [
+        "临界区很长且可能阻塞",
+        "临界区极短（几条指令），不值得付出两次上下文切换",
+        "线程数远多于 CPU 核数",
+        "单核 CPU 系统"
+      ],
+      "answer": 1,
+      "analysis": "「短等自旋，长等睡眠」。单核上自旋反而让持锁者拿不到 CPU，不合适。",
+      "knowledge": "- 互斥锁：拿不到 → 睡眠（上下文切换）\n- 自旋锁：拿不到 → 忙等（烧 CPU）\n- 混合方案：先自旋一阵再睡（adaptive mutex）",
+      "id": "q007"
+    },
+    {
+      "type": "single",
+      "topic": "os",
+      "difficulty": 3,
+      "tags": [
+        "死锁"
+      ],
+      "stem": "银行家算法属于哪一类死锁对策？",
+      "options": [
+        "死锁预防（静态破坏必要条件）",
+        "死锁避免（运行时判断分配后是否仍处于安全状态）",
+        "死锁检测与恢复",
+        "鸵鸟策略（忽略死锁）"
+      ],
+      "answer": 1,
+      "analysis": "银行家算法 = 死锁避免：分配前试探能否找到安全序列，找不到就拒绝请求。",
+      "knowledge": "- **预防**：一次性申请所有资源 / 资源有序分配（破坏循环等待，工程最常用）\n- **避免**：银行家算法\n- **检测恢复**：资源分配图找环 → 剥夺/杀进程（MySQL 做法）",
+      "id": "q008"
+    },
+    {
+      "type": "multi",
+      "topic": "os",
+      "difficulty": 2,
+      "tags": [
+        "死锁"
+      ],
+      "stem": "以下哪些是死锁的必要条件？（多选）",
+      "options": [
+        "互斥",
+        "持有并等待",
+        "不可剥夺",
+        "循环等待",
+        "可抢占"
+      ],
+      "answer": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "analysis": "口诀「互持不剥成环」。「可抢占」恰是破坏「不可剥夺」的手段，不是必要条件。",
+      "knowledge": "1. 互斥 2. 持有并等待 3. 不可剥夺 4. 循环等待\n\n破坏任意一个即可防死锁：资源有序分配破坏循环等待最常用。",
+      "id": "q009"
+    },
+    {
+      "type": "multi",
+      "topic": "os",
+      "difficulty": 2,
+      "tags": [
+        "IPC"
+      ],
+      "stem": "以下哪些属于进程间通信（IPC）机制？（多选）",
+      "options": [
+        "管道 (pipe)",
+        "共享内存",
+        "互斥锁 (mutex)",
+        "信号量 (semaphore)",
+        "条件变量"
+      ],
+      "answer": [
+        0,
+        1,
+        3
+      ],
+      "analysis": "互斥锁/条件变量是**线程**同步原语（同进程内），不属于 IPC。信号量既可线程同步也可用于进程间（如配合共享内存）。",
+      "knowledge": "IPC：管道、消息队列、**共享内存**、信号量、信号、socket\n\n线程同步：mutex、spinlock、rwlock、condition_variable、barrier",
+      "id": "q010"
+    },
+    {
+      "type": "multi",
+      "topic": "os",
+      "difficulty": 3,
+      "tags": [
+        "epoll"
+      ],
+      "stem": "epoll 相比 select 的优势，以下说法正确的是？（多选）",
+      "options": [
+        "没有 FD_SETSIZE 1024 的数量上限",
+        "fd 集合由内核维护，不需要每次调用全量拷贝",
+        "只返回就绪的 fd，避免 O(n) 遍历",
+        "epoll 是真正的异步 IO，数据由内核拷贝到用户缓冲区"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "analysis": "epoll 仍是**同步 IO**：就绪后还得自己 read（拷贝阶段阻塞调用线程）。异步 IO 是 AIO/io_uring。",
+      "knowledge": "- select：bitmap、1024 上限、每次全量拷贝、O(n)\n- epoll：红黑树 + 就绪链表、O(1)、内核维护\n- 前四种 IO 模型都是同步 IO；判断标准 = **拷贝阶段是否阻塞调用线程**",
+      "id": "q011"
+    },
+    {
+      "type": "judge",
+      "topic": "os",
+      "difficulty": 1,
+      "tags": [
+        "进程线程"
+      ],
+      "stem": "同一进程内的两个线程切换，通常比两个进程切换开销小。",
+      "answer": true,
+      "analysis": "同进程线程切换不用换页表、不用刷 TLB，只换栈和寄存器。",
+      "id": "q012"
+    },
+    {
+      "type": "judge",
+      "topic": "os",
+      "difficulty": 2,
+      "tags": [
+        "并发"
+      ],
+      "stem": "C/C++ 的 volatile 可以用于多线程同步（保证原子性和内存序）。",
+      "answer": false,
+      "analysis": "volatile 只保证「每次真实访存、防编译器优化」，不保证原子性、CPU 可见性与内存序。同步用 std::atomic / 锁 / 内存屏障。",
+      "knowledge": "- volatile：防优化，适用于 MMIO 寄存器、信号处理器\n- 多线程同步：`std::atomic` + memory_order（acquire/release）",
+      "id": "q013"
+    },
+    {
+      "type": "judge",
+      "topic": "os",
+      "difficulty": 2,
+      "tags": [
+        "锁"
+      ],
+      "stem": "单核 CPU 上使用自旋锁通常不合适。",
+      "answer": true,
+      "analysis": "自旋期间持锁者可能被抢占调度走，自旋纯属空烧 CPU。",
+      "id": "q014"
+    },
+    {
+      "type": "judge",
+      "topic": "os",
+      "difficulty": 2,
+      "tags": [
+        "select"
+      ],
+      "stem": "每次调用 select 都需要把整个 fd 集合从用户态拷贝到内核态。",
+      "answer": true,
+      "analysis": "这正是 select 的开销来源之一；epoll 的 fd 常驻内核（红黑树），无需重复拷贝。",
+      "id": "q015"
+    },
+    {
+      "type": "judge",
+      "topic": "os",
+      "difficulty": 3,
+      "tags": [
+        "死锁"
+      ],
+      "stem": "系统进入不安全状态，就一定会发生死锁。",
+      "answer": false,
+      "analysis": "不安全 ≠ 死锁：只是「可能」死锁。安全状态则一定不会死锁。",
+      "knowledge": "银行家算法：只在分配后仍存在**安全序列**时才批准请求。",
+      "id": "q016"
+    },
+    {
+      "type": "judge",
+      "topic": "os",
+      "difficulty": 2,
+      "tags": [
+        "IO模型"
+      ],
+      "stem": "epoll 属于异步 IO 模型。",
+      "answer": false,
+      "analysis": "epoll 是 IO 多路复用（同步 IO 的一种）：它只负责「就绪通知」，read 拷贝仍由调用线程完成。",
+      "id": "q017"
+    },
+    {
+      "type": "judge",
+      "topic": "os",
+      "difficulty": 2,
+      "tags": [
+        "页面置换"
+      ],
+      "stem": "LFU 对「过去热门、现在变冷」的页面回收效果较差。",
+      "answer": true,
+      "analysis": "历史计数累积太高，冷页面迟迟淘汰不掉；LRU/Clock 看「最近」行为更合理。",
+      "knowledge": "FIFO（Belady 异常）/ LRU（O(1) 实现：哈希+双向链表）/ LFU / Clock（LRU 近似）/ OPT（理论基准）",
+      "id": "q018"
+    },
+    {
+      "type": "judge",
+      "topic": "os",
+      "difficulty": 1,
+      "tags": [
+        "进程线程"
+      ],
+      "stem": "每个线程拥有自己独立的栈和寄存器上下文。",
+      "answer": true,
+      "analysis": "共享：地址空间、堆、全局变量、fd；独立：栈、寄存器、栈顶指针。",
+      "id": "q019"
+    },
+    {
+      "type": "qa",
+      "topic": "os",
+      "difficulty": 2,
+      "tags": [
+        "进程线程"
+      ],
+      "stem": "请简述进程和线程的区别。",
+      "answer": "**进程**是资源分配的基本单位，**线程**是 CPU 调度的基本单位。\n- 进程有独立地址空间；同进程线程共享地址空间（堆、全局变量、文件描述符），但各自有独立的栈和寄存器\n- 线程切换无需切换页表/TLB，成本远低于进程切换\n- 线程间通信简单（共享内存）但易出并发问题；进程隔离性好，崩溃互不影响\n- 口诀：进程管资源，线程跑执行",
+      "analysis": "追问方向：协程和线程的区别？（用户态协作式调度，纳秒级切换）用户态线程 vs 内核态线程？",
+      "knowledge": "- 调度单位 vs 资源单位\n- 切换成本：线程 << 进程\n- 隔离性：进程强、线程弱\n- 协程：用户态、协作式、一个线程可跑上千协程",
+      "id": "q020"
+    },
+    {
+      "type": "qa",
+      "topic": "os",
+      "difficulty": 3,
+      "tags": [
+        "IPC"
+      ],
+      "stem": "进程间通信有哪些方式？各自的优缺点？",
+      "answer": "- **管道**：半双工、需亲缘进程；命名管道(FIFO)可无亲缘\n- **消息队列**：内核消息链表、有格式；两次拷贝有开销\n- **共享内存**：**最快**（零拷贝），需配信号量/互斥锁同步\n- **信号量**：计数器，用于同步不传数据\n- **信号**：异步事件通知（SIGKILL 等）\n- **socket**：全双工、可跨主机（Unix domain socket 本地高效）",
+      "analysis": "追问：共享内存为什么还要配信号量？（数据零拷贝但没有互斥语义）",
+      "knowledge": "口诀「管消共信号 sock」\n\n| 方式 | 特点 |\n|---|---|\n| 管道 | 半双工 |\n| 消息队列 | 有格式 |\n| 共享内存 | 最快·零拷贝 |\n| socket | 跨主机 |",
+      "id": "q021"
+    },
+    {
+      "type": "qa",
+      "topic": "os",
+      "difficulty": 3,
+      "tags": [
+        "内存管理"
+      ],
+      "stem": "虚拟内存的作用与原理？",
+      "answer": "每个进程有独立虚拟地址空间，经**页表**映射到物理内存。作用：\n1. **隔离**：进程互不干扰\n2. **扩容**：地址空间可大于物理内存（冷页换出 swap）\n3. **共享**：不同虚拟页可映射同一物理页（共享库）\n4. **按需分配**：访问时才真正分配物理页（lazy）\n多级页表解决页表自身过大的问题；MMU+TLB 加速转换。",
+      "analysis": "追问：虚拟地址怎么转物理地址？（页表+MMU+TLB）为什么多级页表省内存？",
+      "knowledge": "口诀「隔离、扩容、共享、按需」\n\n相关：分页(固定4KB·内部碎片) vs 分段(逻辑单位·外部碎片) vs 段页式",
+      "id": "q022"
+    },
+    {
+      "type": "qa",
+      "topic": "os",
+      "difficulty": 3,
+      "tags": [
+        "缺页"
+      ],
+      "stem": "描述一次缺页中断的完整过程。",
+      "answer": "1. CPU 访问的页不在内存，页表项无效 → 触发缺页中断\n2. 保留现场，进入内核缺页处理程序\n3. 检查访问合法性（越界 → SIGSEGV）\n4. 有空闲页框则分配；没有则按置换算法淘汰一页（脏页先写回）\n5. 从磁盘读入所缺页，更新页表置有效\n6. 恢复现场，**重新执行触发缺页的指令**",
+      "analysis": "口诀「中断→查合法→找框→调页→重执行」。追问：major/minor fault 区别？",
+      "knowledge": "置换算法：FIFO / LRU / LFU / Clock / OPT\n\nLRU O(1) 实现：哈希表 + 双向链表",
+      "id": "q023"
+    },
+    {
+      "type": "qa",
+      "topic": "os",
+      "difficulty": 4,
+      "tags": [
+        "IO模型"
+      ],
+      "stem": "简述五种 IO 模型，以及同步 IO 和异步 IO 的本质区别。",
+      "answer": "1. 阻塞 IO：recv 等到拷贝完成\n2. 非阻塞 IO：无数据立即返回 EWOULDBLOCK，轮询\n3. IO 多路复用：select/poll/epoll 盯多个 fd\n4. 信号驱动 IO：就绪发 SIGIO 再去读\n5. 异步 IO：内核完成「就绪+拷贝到用户缓冲区」才通知\n\n本质区别：**数据从内核拷贝到用户空间这一步是否由调用线程自己做**。前四种都是同步 IO（epoll 就绪后仍要自己 read）；AIO/io_uring 才是异步。",
+      "analysis": "口诀「阻塞等、非阻塞问、复用盯、信号叫、异步全托管」",
+      "knowledge": "- Reactor（同步·就绪通知）：Redis/Netty/muduo\n- Proactor（异步·完成通知）：IOCP、io_uring\n- Reactor 通知「可以做」，Proactor 通知「已做完」",
+      "id": "q024"
+    },
+    {
+      "type": "qa",
+      "topic": "os",
+      "difficulty": 4,
+      "tags": [
+        "零拷贝"
+      ],
+      "stem": "什么是零拷贝？sendfile/mmap/splice 分别怎么减少拷贝？",
+      "answer": "传统 read+send：**4 次拷贝**（磁盘→内核缓冲→用户缓冲→socket 缓冲→网卡）+ 4 次上下文切换。\n- **mmap+write**：用户态映射内核缓冲，省 1 次拷贝\n- **sendfile**：数据全程内核态流转，零用户态拷贝；配合网卡 scatter-gather DMA 可 CPU 零拷贝\n- **splice**：借管道在两个 fd 间搬运，不过用户态\n应用：Kafka、Nginx 都用 sendfile 提吞吐。",
+      "analysis": "追问：什么时候不能用零拷贝？（数据需要用户态加工时）",
+      "knowledge": "口诀「read+send 四拷贝，sendfile 不进用户态」",
+      "id": "q025"
+    },
+    {
+      "type": "qa",
+      "topic": "os",
+      "difficulty": 4,
+      "tags": [
+        "并发",
+        "原子"
+      ],
+      "stem": "多核 CPU 上原子操作是如何实现的？volatile 能替代它吗？",
+      "answer": "- 单核：关中断即可\n- 多核：**缓存一致性协议 (MESI) + lock 前缀指令**（如 lock cmpxchg）锁定 cache line（缓存锁）；不支持时退化锁总线\n- **CAS**：硬件级比较交换，无锁编程基础，循环重试实现原子更新\n- volatile **不能**替代：它只防编译器优化，不保证原子性、可见性、内存序。要用 `std::atomic` + memory_order",
+      "analysis": "追问：CAS 的 ABA 问题？（版本号解决）自旋 CAS 的开销？",
+      "knowledge": "- 三大并发问题：竞态、可见性、有序性\n- 内存屏障：禁止重排 + 刷写缓冲\n- acquire/release 建立 happens-before",
+      "id": "q026"
+    },
+    {
+      "type": "code",
+      "topic": "os",
+      "difficulty": 2,
+      "tags": [
+        "字节序"
+      ],
+      "stem": "用 C/C++ 判断本机是大端还是小端，输出 `little` 或 `big`。",
+      "answer": "取 `int x=1` 的首字节：是 1 → 小端（低位字节在低地址）；是 0 → 大端。也可用 union 或 `*(char*)&x`。",
+      "analysis": "网络字节序是大端，用 htonl/ntohl 转换。",
+      "knowledge": "- 小端：低位字节在低地址（x86/ARM 常用）\n- 大端：高位字节在低地址（网络序）",
+      "code": {
+        "lang": "cpp",
+        "starter": "#include <cstdio>\n\nint main() {\n    unsigned int x = 1;\n    // TODO: 取 x 的第一个字节，小端输出 little，大端输出 big\n    \n    return 0;\n}\n",
+        "tests": [
+          {
+            "expected": "little"
+          }
+        ]
+      },
+      "id": "q027"
+    },
+    {
+      "type": "code",
+      "topic": "os",
+      "difficulty": 3,
+      "tags": [
+        "线程同步"
+      ],
+      "stem": "两个线程交替打印：线程 A 打印 0，线程 B 打印 1，最终输出 `0101010101`（共 10 个字符）。\n提示：用 mutex + condition_variable，或 atomic + 自旋。",
+      "answer": "条件变量版本：共享 turn 变量，A 等 turn==0 打印后置 1 并 notify，B 对称。注意用 while 防虚假唤醒。",
+      "analysis": "追问：为什么判断条件要用 while 而不是 if？（虚假唤醒 spurious wakeup）",
+      "knowledge": "condition_variable 三件套：unique_lock + wait(lock, pred) + notify\n\nwait 内部会释放锁并睡眠，被唤醒后重新加锁再检查谓词",
+      "code": {
+        "lang": "cpp",
+        "starter": "#include <cstdio>\n#include <thread>\n#include <mutex>\n#include <condition_variable>\n\nstd::mutex m;\nstd::condition_variable cv;\nint turn = 0;  // 0 -> 该打 0 的线程, 1 -> 该打 1 的线程\n\n// TODO: 补全两个线程函数与 main，输出 0101010101\n",
+        "tests": [
+          {
+            "expected": "0101010101"
+          }
+        ]
+      },
+      "id": "q028"
+    },
+    {
+      "type": "code",
+      "topic": "os",
+      "difficulty": 3,
+      "tags": [
+        "原子"
+      ],
+      "stem": "4 个线程各自把全局计数器加 100000 次，要求最终正确输出 `400000`。",
+      "answer": "把 `int counter` 换成 `std::atomic<int>`，或对累加段加 mutex。atomic 更轻量（缓存行锁）。",
+      "analysis": "对比：无同步时会丢更新（竞态）；mutex 版吞吐低于 atomic 版。",
+      "knowledge": "`std::atomic<int>::fetch_add(1)` 是原子的（lock 前缀 + MESI）",
+      "code": {
+        "lang": "cpp",
+        "starter": "#include <cstdio>\n#include <thread>\n#include <vector>\n\nint counter = 0;  // TODO: 改造成线程安全的方案\n\nint main() {\n    std::vector<std::thread> ts;\n    for (int i = 0; i < 4; ++i) ts.emplace_back([] {\n        for (int j = 0; j < 100000; ++j) {\n            // TODO: 原子/加锁地自增 counter\n        }\n    });\n    for (auto& t : ts) t.join();\n    std::printf(\"%d\\n\", counter);\n    return 0;\n}\n",
+        "tests": [
+          {
+            "expected": "400000"
+          }
+        ]
+      },
+      "id": "q029"
+    },
+    {
+      "type": "single",
+      "topic": "cpp",
+      "difficulty": 1,
+      "tags": [
+        "内存"
+      ],
+      "stem": "new/delete 与 malloc/free 最本质的区别是？",
+      "options": [
+        "new 的速度更快",
+        "new 会调用构造/析构函数，malloc 只分配裸内存",
+        "malloc 不能分配大于 1GB 的内存",
+        "new 失败返回 NULL"
+      ],
+      "answer": 1,
+      "analysis": "new 是运算符（可重载）、返回具体类型指针、失败抛 bad_alloc、底层调 malloc；malloc 是库函数、返回 void*、失败返 NULL。",
+      "knowledge": "| | new | malloc |\n|---|---|---|\n| 性质 | 运算符 | 库函数 |\n| 构造析构 | ✅ | ❌ |\n| 失败 | bad_alloc | NULL |\n\nnew[] 必须配 delete[]",
+      "id": "q030"
+    },
+    {
+      "type": "single",
+      "topic": "cpp",
+      "difficulty": 2,
+      "tags": [
+        "虚函数"
+      ],
+      "stem": "基类析构函数通常声明为 virtual 的原因是？",
+      "options": [
+        "虚析构可以加速 delete",
+        "不声明为 virtual 也能正确析构派生类",
+        "通过基类指针 delete 派生类对象时，非虚析构只调用基类析构，导致派生类资源泄漏",
+        "编译器强制要求"
+      ],
+      "answer": 2,
+      "analysis": "delete Base* 时动态绑定到 Derived 析构 → 先派生后基类完整回收。不作为基类的类无需虚析构（省 vptr）。",
+      "knowledge": "- vtable/vptr 机制：一类一表，一对象一指针\n- 构造函数不能是虚函数（vptr 在构造过程中才设置）",
+      "id": "q031"
+    },
+    {
+      "type": "single",
+      "topic": "cpp",
+      "difficulty": 2,
+      "tags": [
+        "智能指针"
+      ],
+      "stem": "关于 unique_ptr，下列说法正确的是？",
+      "options": [
+        "大小是裸指针的两倍",
+        "可以拷贝给另一个 unique_ptr",
+        "独占所有权、不可拷贝可移动、零开销（大小等于裸指针）",
+        "内部维护引用计数"
+      ],
+      "answer": 2,
+      "analysis": "默认首选 unique_ptr；make_unique 创建。shared_ptr 才有控制块和引用计数。",
+      "knowledge": "- unique_ptr：独占、零开销\n- shared_ptr：引用计数（原子）、控制块开销\n- weak_ptr：观察不增计数，lock() 提升",
+      "id": "q032"
+    },
+    {
+      "type": "single",
+      "topic": "cpp",
+      "difficulty": 2,
+      "tags": [
+        "智能指针"
+      ],
+      "stem": "两个对象各持 shared_ptr 互相引用导致泄漏，标准解法是？",
+      "options": [
+        "把两边都改成 weak_ptr",
+        "把「回指/子指向父」一方改成 weak_ptr，使用时 lock() 提升",
+        "手动调用 delete",
+        "增加引用计数容量"
+      ],
+      "answer": 1,
+      "analysis": "环上断一条边即可。weak_ptr 不增计数；lock() 返回 shared_ptr，对象已死则得空指针。",
+      "knowledge": "循环引用：计数永不归零 → 泄漏\n\nweak_ptr::lock() 是安全访问姿势",
+      "id": "q033"
+    },
+    {
+      "type": "single",
+      "topic": "cpp",
+      "difficulty": 2,
+      "tags": [
+        "STL"
+      ],
+      "stem": "std::map 的底层数据结构是？",
+      "options": [
+        "哈希表",
+        "红黑树",
+        "AVL 树",
+        "跳表"
+      ],
+      "answer": 1,
+      "analysis": "红黑树 → 按 key 有序、O(log n)、迭代器稳定。unordered_map 才是哈希表（平均 O(1)，rehash 迭代器失效）。",
+      "knowledge": "| | map | unordered_map |\n|---|---|---|\n| 底层 | 红黑树 | 哈希表 |\n| 有序 | ✅ | ❌ |\n| 查找 | O(log n) | 均 O(1) |",
+      "id": "q034"
+    },
+    {
+      "type": "single",
+      "topic": "cpp",
+      "difficulty": 2,
+      "tags": [
+        "STL"
+      ],
+      "stem": "GCC (libstdc++) 的 vector 扩容策略大约是原来的多少倍？",
+      "options": [
+        "1 倍（不扩）",
+        "1.5 倍",
+        "2 倍",
+        "10 倍"
+      ],
+      "answer": 2,
+      "analysis": "GCC 2 倍、MSVC 1.5 倍。倍增保证 push_back 摊还 O(1)；1.5 倍让旧内存块更易被复用。",
+      "knowledge": "扩容 = 新分配 → 元素搬移（noexcept 移动构造则 move）→ 释放旧内存\n\n**扩容后原迭代器/指针/引用全部失效**",
+      "id": "q035"
+    },
+    {
+      "type": "single",
+      "topic": "cpp",
+      "difficulty": 3,
+      "tags": [
+        "拷贝控制"
+      ],
+      "stem": "拷贝构造函数的参数为什么必须是引用？",
+      "options": [
+        "为了性能",
+        "按值传参本身就要调用拷贝构造，会无限递归",
+        "语法糖，其实可以是指针",
+        "为了支持多态"
+      ],
+      "answer": 1,
+      "analysis": "传值触发拷贝构造 → 又要传值 → 无限递归。所以规定必须传引用（通常 const T&）。",
+      "knowledge": "拷贝构造触发时机：`A b = a` / 按值传参 / 按值返回（可能被 RVO 优化掉）",
+      "id": "q036"
+    },
+    {
+      "type": "single",
+      "topic": "cpp",
+      "difficulty": 3,
+      "tags": [
+        "虚函数"
+      ],
+      "stem": "构造函数不能是虚函数，根本原因是？",
+      "options": [
+        "语法不允许，没有为什么",
+        "构造时对象的 vptr 还没设置好，虚机制无从查表",
+        "构造函数是静态绑定的",
+        "虚函数表里放不下构造函数"
+      ],
+      "answer": 1,
+      "analysis": "vptr 在构造过程中逐层设置（先基类后派生）。析构相反：基类析构应当是虚的。",
+      "knowledge": "构造/析构中调用虚函数：不发生多态，调用的是**当前层**的版本",
+      "id": "q037"
+    },
+    {
+      "type": "multi",
+      "topic": "cpp",
+      "difficulty": 2,
+      "tags": [
+        "RAII"
+      ],
+      "stem": "以下哪些是 RAII 思想的典型应用？（多选）",
+      "options": [
+        "std::lock_guard",
+        "std::shared_ptr",
+        "std::fstream",
+        "裸 new/delete 配对",
+        "std::jthread(C++20)"
+      ],
+      "answer": [
+        0,
+        1,
+        2,
+        4
+      ],
+      "analysis": "RAII = 资源的获取/释放绑定对象构造/析构。裸 new/delete 是 RAII 要解决的问题本身。",
+      "knowledge": "RAII 核心价值：作用域结束自动释放 + **异常安全**（栈展开必析构）",
+      "id": "q038"
+    },
+    {
+      "type": "multi",
+      "topic": "cpp",
+      "difficulty": 3,
+      "tags": [
+        "STL",
+        "迭代器"
+      ],
+      "stem": "关于 STL 迭代器失效，以下说法正确的有？（多选）",
+      "options": [
+        "vector 扩容后，原有迭代器全部失效",
+        "vector erase 后，插入点之后的迭代器失效",
+        "unordered_map rehash 后，原有迭代器仍然有效",
+        "map/set 的 erase 只使被删元素的迭代器失效"
+      ],
+      "answer": [
+        0,
+        1,
+        3
+      ],
+      "analysis": "unordered_map rehash 后**所有迭代器失效**（指向元素的引用不失效）。正确姿势：`it = c.erase(it)`。",
+      "knowledge": "- vector：怕搬家（扩容全失效）\n- unordered_map：怕重排（rehash 全失效）\n- 红黑树/链表：只坏被删节点",
+      "id": "q039"
+    },
+    {
+      "type": "multi",
+      "topic": "cpp",
+      "difficulty": 3,
+      "tags": [
+        "移动语义"
+      ],
+      "stem": "关于 std::move / 移动语义，正确的说法有？（多选）",
+      "options": [
+        "std::move 把左值表达式转为右值引用，本身不移动任何东西",
+        "被 move 后的对象处于「有效但未指定」状态，通常为空，仍可被赋值或析构",
+        "右值引用 T&& 可以直接绑定左值",
+        "移动构造通常直接接管资源指针，避免深拷贝"
+      ],
+      "answer": [
+        0,
+        1,
+        3
+      ],
+      "analysis": "右值引用只能绑右值；绑左值要靠**万能引用**（模板推导中的 T&&）+ std::forward。",
+      "knowledge": "- move：无条件转右值\n- forward：有条件还原左右值属性（完美转发）\n- 引用折叠：& && → &，&& && → &&",
+      "id": "q040"
+    },
+    {
+      "type": "judge",
+      "topic": "cpp",
+      "difficulty": 2,
+      "tags": [
+        "移动语义"
+      ],
+      "stem": "被 std::move 过的对象不能再被赋值或析构。",
+      "answer": false,
+      "analysis": "处于「有效但未指定」状态：可以安全赋新值、可以析构，只是内容不确定（通常为空）。",
+      "id": "q041"
+    },
+    {
+      "type": "judge",
+      "topic": "cpp",
+      "difficulty": 2,
+      "tags": [
+        "lambda"
+      ],
+      "stem": "无捕获的 lambda 表达式可以隐式转换为普通函数指针。",
+      "answer": true,
+      "analysis": "无捕获 → 闭包对象无状态，operator() 等价于自由函数，可转 `void(*)()`。",
+      "id": "q042"
+    },
+    {
+      "type": "judge",
+      "topic": "cpp",
+      "difficulty": 3,
+      "tags": [
+        "STL"
+      ],
+      "stem": "unordered_map 发生 rehash 后，指向元素的指针和引用也会失效。",
+      "answer": false,
+      "analysis": "C++11 起：rehash 使**迭代器**失效，但指向元素的指针/引用不失效（节点式存储，换桶不换节点）。",
+      "id": "q043"
+    },
+    {
+      "type": "judge",
+      "topic": "cpp",
+      "difficulty": 2,
+      "tags": [
+        "const"
+      ],
+      "stem": "const 成员函数中可以修改被 mutable 修饰的成员变量。",
+      "answer": true,
+      "analysis": "mutable 表示「逻辑常量性中的可变实现细节」（如缓存、mutex、计数）。",
+      "knowledge": "const 成员函数：不改成员（mutable 除外）、只能调 const 成员函数；const 对象只能调 const 成员函数",
+      "id": "q044"
+    },
+    {
+      "type": "judge",
+      "topic": "cpp",
+      "difficulty": 2,
+      "tags": [
+        "STL"
+      ],
+      "stem": "vector 扩容之后，之前保存的指向元素的原生指针仍然有效。",
+      "answer": false,
+      "analysis": "扩容 = 搬迁到新内存，旧块被释放 → 指针/引用/迭代器全部失效。需要稳定地址用 reserve 足量或 deque/list。",
+      "id": "q045"
+    },
+    {
+      "type": "judge",
+      "topic": "cpp",
+      "difficulty": 2,
+      "tags": [
+        "虚函数"
+      ],
+      "stem": "虚函数调用比普通函数调用多一次查虚表的间接寻址开销。",
+      "answer": true,
+      "analysis": "vptr → vtable → 函数指针 → 调用。代价小但阻碍内联；热路径上可考虑 final 帮助去虚化。",
+      "id": "q046"
+    },
+    {
+      "type": "qa",
+      "topic": "cpp",
+      "difficulty": 3,
+      "tags": [
+        "虚函数"
+      ],
+      "stem": "简述 C++ 虚函数的多态实现原理（vtable/vptr）。",
+      "answer": "- 每个**含虚函数的类**有一张虚函数表 vtable，按声明顺序存放该类虚函数地址；派生类重写则覆盖对应槽位，新增虚函数追加\n- 每个**对象**首部有 vptr，指向所属类的 vtable（构造过程中逐层设置）\n- 虚调用：对象 vptr → vtable → 按偏移取函数地址 → 调用（动态绑定）\n- 因此基类指针指向派生类对象时，调用的是派生类重写版本\n- 虚析构：保证 `delete Base*` 完整析构派生类",
+      "analysis": "追问：构造函数里调虚函数会怎样？（调用当前层版本，无多态）为什么构造函数不能虚？（vptr 未就位）",
+      "knowledge": "口诀「一类一表，一对象一指针，调用时查表跳转」",
+      "id": "q047"
+    },
+    {
+      "type": "qa",
+      "topic": "cpp",
+      "difficulty": 2,
+      "tags": [
+        "智能指针"
+      ],
+      "stem": "unique_ptr / shared_ptr / weak_ptr 各自的特点和使用场景？",
+      "answer": "- **unique_ptr**：独占所有权，不可拷贝可移动，零开销（=裸指针大小）；默认首选，make_unique 创建\n- **shared_ptr**：共享所有权，控制块原子引用计数，归零释放；make_shared 一次分配对象+控制块；计数原子安全但对象本身不保证线程安全\n- **weak_ptr**：不增计数的观察者，lock() 提升为 shared_ptr（对象已死得空指针）；解决循环引用",
+      "analysis": "追问：shared_ptr 计数为什么是原子的？（多线程增减）循环引用怎么断环？（回指方向改 weak）",
+      "knowledge": "口诀「独占 unique，共享 shared，观察 weak」",
+      "id": "q048"
+    },
+    {
+      "type": "qa",
+      "topic": "cpp",
+      "difficulty": 4,
+      "tags": [
+        "移动语义"
+      ],
+      "stem": "什么是完美转发？std::forward 和 std::move 的区别？",
+      "answer": "- 万能引用：模板推导中的 `T&&`，左值传入 T 推成 T&，右值传入 T 推成 T（引用折叠 & &&→&）\n- 问题：形参本身有名字是**左值**，直接转发会丢失右值属性\n- **std::forward<T>(x)**：按 T 的推导结果有条件地还原左右值 → 完美转发\n- **std::move(x)**：无条件转右值（本质是 static_cast<T&&>）\n典型应用：emplace_back、make_shared 的变参转发",
+      "analysis": "追问：move 之后原对象什么状态？（有效但未指定，通常为空）",
+      "knowledge": "口诀「move 无条件转右值，forward 有条件还原」",
+      "id": "q049"
+    },
+    {
+      "type": "qa",
+      "topic": "cpp",
+      "difficulty": 3,
+      "tags": [
+        "STL"
+      ],
+      "stem": "vector 为什么按倍数（1.5/2 倍）扩容而不是固定增量？",
+      "answer": "- 倍增保证 push_back **摊还 O(1)**：n 次 push 总搬移 O(n)\n- 固定增量 k：总搬移 O(n²/k)，摊还 O(n)，不可接受\n- 2 倍：空间增长快；1.5 倍（MSVC）：前几次释放的旧块总和可能被后续复用（0.5+0.75+… ≈ 2 倍），内存碎片更友好\n- 实践：能预估就 reserve，避免反复搬家；扩容后迭代器/指针全部失效",
+      "analysis": "追问：reserve 和 resize 区别？（容量 vs size+值初始化）",
+      "knowledge": "搬移时若移动构造 noexcept 则 move 否则 copy（std::move_if_noexcept）",
+      "id": "q050"
+    },
+    {
+      "type": "qa",
+      "topic": "cpp",
+      "difficulty": 4,
+      "tags": [
+        "红黑树"
+      ],
+      "stem": "红黑树有哪些性质？map 为什么选红黑树而不是 AVL 或哈希表？",
+      "answer": "五条性质：\n1. 节点非红即黑\n2. 根为黑\n3. NIL 叶为黑\n4. 红节点子节点必黑（无连续红）\n5. 任一节点到其所有叶子的路径**黑高相同**\n→ 最长路径 ≤ 2×最短路径，树高 O(log n)\n\n选红黑树：插删只需 O(1) 次旋转级别的调整（AVL 更平衡查询略快但插删旋转多）；且 map 需要**有序遍历**和稳定迭代器（哈希表给不了）。",
+      "analysis": "口诀「根黑叶黑无红连，黑高一致路不翻倍」。追问：为什么不用 AVL？（写多读少时旋转开销）",
+      "knowledge": "对比：AVL 严格平衡（查询快、维护贵）；红黑树近似平衡（综合优）→ map/set/epoll 就绪结构的选择",
+      "id": "q051"
+    },
+    {
+      "type": "qa",
+      "topic": "cpp",
+      "difficulty": 3,
+      "tags": [
+        "关键字"
+      ],
+      "stem": "列举 static 在 C++ 中的四种用法。",
+      "answer": "1. **修饰局部变量**：静态存储期、只初始化一次（C++11 起线程安全 → Meyers 单例），作用域不变\n2. **修饰全局变量/函数**：内部链接，仅本编译单元可见（替代：匿名 namespace）\n3. **静态成员变量**：属于类，所有对象共享，类外定义（constexpr 除外）\n4. **静态成员函数**：无 this，只能访问静态成员，类名可直接调用",
+      "analysis": "追问：static 全局变量 vs 普通全局变量？（链接性不同）Meyers 单例为何线程安全？（魔法静态量）",
+      "knowledge": "口诀「变量延命，全局限内，类成员归类，类函数无 this」",
+      "id": "q052"
+    },
+    {
+      "type": "code",
+      "topic": "cpp",
+      "difficulty": 3,
+      "tags": [
+        "内存",
+        "指针"
+      ],
+      "stem": "实现 `void* myMemmove(void* dst, const void* src, size_t n)`：处理源目区域**重叠**的安全拷贝，并按 main 中的演示输出结果。",
+      "answer": "重叠时按方向决定拷贝顺序：dst > src 且 dst < src+n → 从**尾**往前拷；否则从头往后。等价于 memmove 的实现。",
+      "analysis": "memcpy 对重叠区域是未定义行为；面试常考手写。",
+      "knowledge": "- memcpy：不处理重叠（UB）\n- memmove：按重叠方向选拷贝次序",
+      "code": {
+        "lang": "cpp",
+        "starter": "#include <cstdio>\n#include <cstring>\n\nvoid* myMemmove(void* dst, const void* src, size_t n) {\n    // TODO: 处理重叠的拷贝\n    return dst;\n}\n\nint main() {\n    char s[] = \"1234567890\";\n    myMemmove(s + 2, s, 8);\n    puts(s);\n    return 0;\n}\n",
+        "tests": [
+          {
+            "expected": "1212345678"
+          }
+        ]
+      },
+      "id": "q053"
+    },
+    {
+      "type": "code",
+      "topic": "cpp",
+      "difficulty": 2,
+      "tags": [
+        "单例"
+      ],
+      "stem": "实现 Meyers 单例：`Singleton::getInstance()` 返回唯一实例，main 里比较两次获取的地址，输出 `same`。",
+      "answer": "静态局部变量在首次执行时初始化（C++11 保证线程安全），后续直接返回。结构体含一个成员即可。",
+      "analysis": "追问：为什么 C++11 起它线程安全？（魔法静态量）其他单例写法的坑？",
+      "knowledge": "Meyers 单例 = static 局部变量 + 首次调用初始化\n\n对比：饿汉（启动即建）/ 双检锁（需 atomic 防重排）",
+      "code": {
+        "lang": "cpp",
+        "starter": "#include <cstdio>\n\nstruct Singleton {\n    // TODO: Meyers 单例\n};\n\nint main() {\n    auto* a = Singleton::getInstance();\n    auto* b = Singleton::getInstance();\n    puts(a == b ? \"same\" : \"different\");\n    return 0;\n}\n",
+        "tests": [
+          {
+            "expected": "same"
+          }
+        ]
+      },
+      "id": "q054"
+    },
+    {
+      "type": "code",
+      "topic": "cpp",
+      "difficulty": 4,
+      "tags": [
+        "算法",
+        "页面置换"
+      ],
+      "stem": "用 Python 实现 LRU 缓存 `LRUCache(capacity)`，支持 `get(key)`（不存在返回 -1）与 `put(key, value)`。按 starter 中 main 的操作输出结果。",
+      "answer": "`collections.OrderedDict`：get/put 后 move_to_end，超容量 popitem(last=False) 淘汰最旧。手写则哈希表+双向链表，两边 O(1)。",
+      "analysis": "这也是「LRU 页面置换 / Redis 淘汰」的通用底座；面试要求 O(1)。",
+      "knowledge": "LRU O(1) = 哈希表（定位） + 双向链表（序）\n\n页面置换里 Clock 算法是它的硬件近似",
+      "code": {
+        "lang": "python",
+        "starter": "class LRUCache:\n    def __init__(self, capacity):\n        # TODO\n        pass\n\n    def get(self, key):\n        # TODO\n        pass\n\n    def put(self, key, value):\n        # TODO\n        pass\n\n\ncache = LRUCache(2)\ncache.put(1, 1)\ncache.put(2, 2)\nprint(cache.get(1))\ncache.put(3, 3)       # 淘汰 key 2\nprint(cache.get(2))\nprint(cache.get(3))\n",
+        "tests": [
+          {
+            "expected": "1\n-1\n3"
+          }
+        ]
+      },
+      "id": "q055"
+    }
+  ]
+}

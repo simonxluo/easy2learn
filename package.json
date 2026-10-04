@@ -1,0 +1,40 @@
+{
+  "name": "easy2learn",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness 学习插件：可被 agent 实时编辑的本地刷题网页（选择/问答/判断/编程题 + 知识点），支持本地判题与笔记联动",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "web",
+    "data",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "node src/standalone.js",
+    "gen:bank": "node scripts/gen-bank.mjs"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "dsh",
+    "quiz",
+    "learning",
+    "interview"
+  ],
+  "author": "simonxluo",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

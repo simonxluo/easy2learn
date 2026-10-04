@@ -1,0 +1,14 @@
+# easy2learn: agent 可实时编辑的本地刷题网页插件
+#
+# 安装本 bundle 会在 profile 里插入一个禁用行(id: tool-easy2learn)，config 为空。
+# 可在 profile 的 cordis.patch.yml 里覆盖配置：
+#
+#   - id: tool-easy2learn
+#     config:
+#       port: 8788          # 本地网页端口
+#       bankPath: data/bank.json   # 题库文件（相对插件目录或绝对路径）
+#       root: /path/to/workspace   # 笔记根目录（interview-prep 等挂在下面）
+- insert:
+    - id: tool-easy2learn
+      name: easy2learn
+      config: {}
