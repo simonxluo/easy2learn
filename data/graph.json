@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-10-04T10:15:59.574Z",
+  "generatedAt": "2026-10-04T10:19:39.013Z",
   "engine": "builtin-force",
   "topics": [
     {
@@ -96,6 +96,20 @@
           "label": "僵尸进程 / 孤儿进程 / 守护进程？",
           "kind": "qa",
           "content": "**A:**\n- **僵尸 (zombie)**：子进程已退出但父进程没 `wait()` → 内核保留退出状态（PID/退出码）占表项；大量僵尸耗尽 PID。解决：父进程 wait/waitpid；或杀父让 init 收养回收；`signal(SIGCHLD, SIG_IGN)` 让内核自动回收\n- **孤儿 (orphan)**：父进程先死 → 子进程被 **init/systemd（PID 1）收养**，退出由收养者回收——不是问题状态\n- **守护进程 (daemon)**：脱离终端、后台长期运行；创建套路：fork 父退出 → 子 `setsid()` 建新会话 → 再 fork 防重获终端 → chdir(\"/\")、重设 umask、关闭/重定向 0/1/2\n- systemd 时代多用 service unit 托管，原理仍是会话/进程组分离\n\n> 🔑 记忆口诀：「僵尸是没被收尸的退出状态，孤儿有人收养，守护自己开会话」\n> ⚠️ 常见追问：怎么找出僵尸？（`ps -eo stat,pid | grep '^Z'`）\n\n---"
+        },
+        {
+          "id": "os:进程的创建过程-fork/clone/exec-全景与内核步骤",
+          "chapter": "进程与线程",
+          "label": "进程的创建过程？（fork/clone/exec 全景与内核步骤）",
+          "kind": "qa",
+          "content": "**A:**\n- **用户态入口四件套**：\n  - `fork()`：复制当前进程（COW，见下卡）\n  - `vfork()`：不拷页表直接共享地址空间且父挂起，专为紧接 exec 的场景（现代被 COW + `posix_spawn` 取代）\n  - `clone()`：**Linux 万物创建之源**——用 flags 精确控制哪些资源共享、哪些复制（fork = 几乎全拷，pthread = 几乎全共享）\n  - `posix_spawn()`：fork+exec 的组合优化（vfork 语义 + 立即换程序）\n- **内核创建步骤（fork 路径）**：\n  1. 陷入内核走 `clone` 系统调用 → `kernel_clone()`\n  2. 分配新 `task_struct`（进程描述符）、分配 **PID**（及其 namespace 视图）\n  3. 按 clone flags **拷贝或共享**资源：`mm_struct`（页表，COW 标只读）、`files_struct`（fd 表，默认 dup 共享偏移）、`fs_struct`（cwd）、`sighand`（信号处理表）\n  4. 分配内核栈，把父进程的寄存器上下文复制一份，**把子进程的返回值寄存器改写为 0**\n  5. 新 task 挂入就绪队列（TASK_RUNNING），返回用户态 → **一次调用、两次返回**（父得 PID、子得 0）\n- **`exec` 家族**：不创建新进程，而是**替换**当前进程的地址空间（新 mm、新代码段数据段）；PID 不变、fd 默认保留（`O_CLOEXEC` 除外）、信号重置为默认\n- Windows 对照：`CreateProcess` = fork+exec 二合一（创建即装载程序，没有「先复制再替换」两步）\n\n> 🔑 记忆口诀：「clone 是总开关，fork 全拷、线程全共享；exec 换心不换身」\n> ⚠️ 常见追问：为什么 fork 后常调 exec，还要先拷页表？（COW 让「拷页表」代价极小；posix_spawn/vfork 进一步省这步）\n\n---"
+        },
+        {
+          "id": "os:线程的创建过程-和进程创建的本质区别",
+          "chapter": "进程与线程",
+          "label": "线程的创建过程？和进程创建的本质区别？",
+          "kind": "qa",
+          "content": "**A:**\n- **用户态**：`pthread_create(&tid, attr, func, arg)`（NPTL，1:1 模型）→ glibc 调 **`clone()`** 并带上共享 flags：\n  `CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND | CLONE_THREAD | CLONE_SETTLS …`\n- **内核视角**：**线程 = 共享了大量资源的轻量级进程**——每线程照样有独立 `task_struct`（所以 `/proc` 里每线程一个条目，`gettid` 区分）；同组线程共属一个**线程组**（组长 tgid = 用户说的 PID）\n- 创建步骤与 fork 相同，差异全在 flags：**不拷页表**（共享 `mm_struct`）、不拷 fd 表/信号表，只需分配**私有内核栈 + 用户栈（默认 8MB，可 attr 调）+ TLS**，把 func/arg 放进新栈顶模拟「被返回到的位置」\n- **共享 vs 私有**（高频）：\n  - 共享：地址空间（代码/全局/堆）、fd、信号处理函数、cwd、CPU 优先级设置\n  - 私有：**栈、寄存器/PC、errno、信号屏蔽字、线程 id**\n- **创建成本对比**：进程 = 拷页表（COW 缓解）+ 独立地址空间切换贵；线程 = 建栈 + task_struct，不碰页表——创建/切换/通信（共享内存天然可见）都便宜\n- 关联坑：线程崩溃（段错误）会带崩**整个进程**（共享地址空间）；一个线程 `exit()` 只退自己，`exit_group()` 才退整组\n\n> 🔑 记忆口诀：「线程就是 clone 的共享套餐：栈和寄存器私有，其余全共享」\n> ⚠️ 常见追问：pthread 和 fork 混用的坑？（fork 只带当前线程，别的线程持有的锁成死锁；子进程只能做 async-signal-safe 操作直到 exec）\n\n---"
         },
         {
           "id": "os:虚拟内存的作用与原理",
@@ -304,6 +318,18 @@
         {
           "s": "os:fork-的过程-写时复制-cow-是怎么工作的",
           "t": "os:僵尸进程-/-孤儿进程-/-守护进程",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "os:僵尸进程-/-孤儿进程-/-守护进程",
+          "t": "os:进程的创建过程-fork/clone/exec-全景与内核步骤",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "os:进程的创建过程-fork/clone/exec-全景与内核步骤",
+          "t": "os:线程的创建过程-和进程创建的本质区别",
           "kind": "seq",
           "label": "下一问"
         },
@@ -540,6 +566,36 @@
           "t": "os:零拷贝技术有哪些",
           "kind": "rel",
           "label": "减少穿越边界是共同目标"
+        },
+        {
+          "s": "os:进程的创建过程-fork/clone/exec-全景与内核步骤",
+          "t": "os:fork-的过程-写时复制-cow-是怎么工作的",
+          "kind": "rel",
+          "label": "fork 是创建的主路径"
+        },
+        {
+          "s": "os:进程的创建过程-fork/clone/exec-全景与内核步骤",
+          "t": "os:进程有哪些状态-五态模型怎么转换",
+          "kind": "rel",
+          "label": "创建后就绪"
+        },
+        {
+          "s": "os:线程的创建过程-和进程创建的本质区别",
+          "t": "os:进程和线程的区别",
+          "kind": "rel",
+          "label": "区别卡的机制级解释"
+        },
+        {
+          "s": "os:线程的创建过程-和进程创建的本质区别",
+          "t": "os:进程的创建过程-fork/clone/exec-全景与内核步骤",
+          "kind": "rel",
+          "label": "clone 是共同底座"
+        },
+        {
+          "s": "os:线程的创建过程-和进程创建的本质区别",
+          "t": "os:线程同步方式有哪些",
+          "kind": "rel",
+          "label": "共享所以需要同步"
         }
       ],
       "warnings": []

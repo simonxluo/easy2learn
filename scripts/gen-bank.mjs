@@ -590,6 +590,9 @@ const bank = {
     {type: "judge",topic: "agent",difficulty: 2,tags: ["框架"],stem: "LangGraph 相比裸写 while 循环的核心增值是：状态图 + 检查点持久化 + 人在回路钩子。",answer: true,analysis: "图编排让流程显式可存档：断点恢复、时间旅行调试、interrupt 审批。简单线性 ReAct 用官方 SDK 循环更轻；复杂分支+持久化+人审才上图编排。",knowledge: "同类：AutoGen（对话式多体）/CrewAI（角色流水线）/OpenAI Agents SDK（handoff）"},
     {type: "single",topic: "agent",difficulty: 4,tags: ["评测"],stem: "Agent 评测与单次 LLM 调用评测的核心差异是？",options: ["只需评测最终结果的正确率","还要做轨迹级评测：步数、工具选择、循环、错误恢复","只能靠人工打分","用 perplexity 就够了"],answer: 1,analysis: "三层：结果级（验收清单/测试通过率）、轨迹级（trajectory：LLM-as-judge + 规则断言）、组件级（回归）。只测结果不测轨迹会漏掉「结果对但绕 50 步」的成本炸弹。行业现状：89% 组织部署了 agent，仅 11-15% 有系统化评估。",knowledge: "先建金标任务集进 CI；纠错回流成新用例\n特有指标：每任务成本分布、人审介入率"},
     {type: "qa",topic: "agent",difficulty: 4,tags: ["沙箱","安全"],stem: "Agent 执行代码/操作文件的沙箱要怎么设计？（要点）",answer: "分层隔离：① 进程级——独立容器/微 VM（gVisor/Firecracker），默认断网、白名单出网；② 文件系统——工作目录绑定挂载可写、其余只读、敏感路径（凭据/~/.ssh）不可见，磁盘配额；③ 能力级——工具白名单，危险操作（删库/对外发送/花钱）二次确认或禁用，凭据按任务发放用完即焚；④ 资源级——CPU/内存/时长/输出限额防失控烧钱。原则：prompt 是建议不是边界（注入即可绕过），沙箱必须默认拒绝。三问自检：能碰什么文件、能出什么网、能花多少钱。"},
+    /* ================= 进程/线程创建过程 ================= */
+    {type: "single",topic: "os",difficulty: 3,tags: ["进程创建"],stem: "关于 Linux 进程/线程创建，下列说法正确的是？",options: ["fork 和 pthread_create 底层毫无关联，走完全不同的系统调用","两者都走 clone()，差异由 clone flags 控制共享还是拷贝资源","exec 会创建新进程并分配新 PID","pthread_create 会复制整个页表"],answer: 1,analysis: "clone 是万物创建之源：fork=几乎全拷（页表 COW），pthread=几乎全共享（CLONE_VM 等标志）。exec 不建新进程，只替换地址空间（PID 不变）。",knowledge: "内核步骤：task_struct → PID → 按 flags 拷/共享 mm/files/sighand → 内核栈+改写返回值 → 入就绪队列\nWindows CreateProcess = fork+exec 二合一"},
+    {type: "multi",topic: "os",difficulty: 3,tags: ["线程"],stem: "同进程内多线程之间【共享】的资源有哪些？",options: ["地址空间（全局变量/堆）","文件描述符表","每个线程自己的函数调用栈","信号处理函数表"],answer: [0,1,3],analysis: "私有：栈、寄存器/PC、errno、信号屏蔽字、tid；共享：地址空间、fd 表、信号处理函数、cwd。线程崩溃会带崩整个进程。",knowledge: "pthread → clone(CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD…)\n每线程仍有独立 task_struct（/proc 可见，gettid 区分）"},
   ],
 }
 
