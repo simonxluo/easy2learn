@@ -126,6 +126,26 @@ async function startServer(config) {
     )
   } catch {}
 
+  // 笔记目录（notesRoots）：agent 编辑本地 md 笔记 → 学习页收到 notes 事件重拉内容
+  debounce.notes = null
+  for (const r of state.bank.notesRoots) {
+    const dir = path.resolve(state.root, r)
+    const fire = () => {
+      clearTimeout(debounce.notes)
+      debounce.notes = setTimeout(() => {
+        if (current) broadcast(clients, 'notes', { at: new Date().toISOString() })
+      }, 250)
+    }
+    try {
+      watchers.push(fs.watch(dir, { recursive: true }, (_evt, file) => {
+        if (file && file.endsWith('.DS_Store')) return
+        fire()
+      }))
+    } catch {
+      try { watchers.push(fs.watch(dir, { recursive: false }, fire)) } catch {}
+    }
+  }
+
   current = { server, state, watcher: watchers }
 }
 
