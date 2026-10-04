@@ -275,16 +275,20 @@ a.ghost { display: inline-block; }
 .slide-viewport {
   flex: 1; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory;
   container-type: inline-size; /* 卡片宽度按可视宽度计，扣除目录后不溢出 */
+  overscroll-behavior-x: contain; /* 与左目录垂直滚动彻底解耦：滚到头不外溢 */
 }
 .slide-track {
-  display: flex; gap: 18px; padding: 22px 32px; height: 100%; align-items: stretch;
+  display: flex; gap: 18px; padding: 22px 32px; height: 100%;
+  align-items: center;  /* 卡片高度随内容自适应并垂直居中，不再被窗口拉伸出大片空白 */
   width: max-content;
 }
 .slide-card {
   scroll-snap-align: center; width: min(760px, 82vw); flex-shrink: 0;
   width: min(760px, 88cqw); /* 支持 cqw 的浏览器按滑动区实际宽度算 */
+  height: auto; max-height: 100%; min-height: 220px; /* 短卡不空旷、长卡内部滚 */
   background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 20px 26px; overflow-y: auto; scrollbar-width: thin;
+  padding: 20px 26px; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 .card-head { display: flex; gap: 8px; align-items: center; }
 .card-head .badge { margin-right: auto; }
