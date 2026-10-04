@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const bank = {
-  meta: { name: '面经题库（OS + C++ + UE + LLM + 米哈游 + AI Infra）', version: 1 },
+  meta: { name: '面经题库（OS + C++ + UE + LLM + 米哈游 + AI Infra + Agent）', version: 1 },
   topics: [
     { id: 'os', name: '操作系统', note: 'interview-prep/os/操作系统.md' },
     { id: 'cpp', name: 'C++', note: 'interview-prep/language/编程语言.md' },
@@ -14,6 +14,7 @@ const bank = {
     { id: 'ai', name: 'LLM应用工程', note: 'interview-prep/ai/LLM应用工程.md' },
     { id: 'mihoyo', name: '米哈游AI工具岗', note: 'interview-prep/mihoyo/米哈游AI工具岗.md' },
     { id: 'aiinfra', name: 'AI Infra', note: 'interview-prep/aiinfra/AI-Infra.md' },
+    { id: 'agent', name: 'Agent开发', note: 'interview-prep/agent/Agent开发.md' },
   ],
   notesRoots: ['interview-prep'],
   questions: [
@@ -580,6 +581,15 @@ const bank = {
     {type: "single",topic: "aiinfra",difficulty: 4,tags: ["注意力"],stem: "FlashAttention 加速的核心手段是？",options: ["把注意力近似为稀疏计算","分块+在线 softmax，中间 N×N 矩阵不落 HBM，显存访问从 O(N²) 降到 O(N)","用 INT4 量化权重","多卡并行切序列"],answer: 1,analysis: "标准注意力的瓶颈是 IO：softmax 中间矩阵写回 HBM 再读。FlashAttention 分块流式计算+running max/sum 增量归一，数值精确等价。",knowledge: "IO-aware 精确注意力；Q 块驻留 SRAM，K/V 分块流过\nFA2/3 改并行切分与 Hopper 异步"},
     {type: "judge",topic: "aiinfra",difficulty: 3,tags: ["serving"],stem: "Continuous Batching 通过让短序列等待同 batch 最长序列一起返回来提高吞吐。",answer: false,analysis: "恰好相反：静态批处理才是「陪跑到最长」。Continuous Batching 做迭代级调度——完成的请求立即出队返回、新请求随时插队，GPU 始终满载。",knowledge: "vLLM = PagedAttention（显存）+ continuous batching（调度）\n抢占：RECOMPUTE vs SWAP 两种代价模型"},
     {type: "qa",topic: "aiinfra",difficulty: 3,tags: ["量化"],stem: "GPTQ / AWQ / GGUF 三大量化路线怎么区分？",answer: "GPTQ：训练后逐层量化，用二阶（Hessian）信息最小化重构误差，对离群值大的层稳，偏 GPU 服务端。AWQ：发现保护约 1% 显著权重通道即可保精度——按激活分布做逐通道缩放再量化，推理快、服务端主流。GGUF：llama.cpp 生态容器格式，K-quant 混合位宽分块量化，CPU/端侧友好。经验：INT4 对常规任务掉点小，长链推理/代码/数学掉点放大，必须拿业务评测集回归；KV Cache 量化（FP8/INT8）是独立战线；QLoRA = 4bit 底座 + LoRA 微调。"},
+    /* ================= Agent 开发 ================= */
+    {type: "single",topic: "agent",difficulty: 2,tags: ["架构"],stem: "Agent 的经典架构公式是？",options: ["LLM + Prompt + 微调","LLM + Planning + Memory + Tools，外套 Agent Loop","RAG + 向量库 + 提示词","规则引擎 + 知识图谱"],answer: 1,analysis: "Agent = LLM（大脑）+ Planning + Memory + Tools，外面套感知→思考→行动→观察的循环；和 chatbot 的本质区别是有循环、有状态、有副作用。",knowledge: "产品参照：Manus（通用任务）、Devin/Claude Code（编程）\n能力下限是工具，上限是规划"},
+    {type: "single",topic: "agent",difficulty: 3,tags: ["ReAct"],stem: "ReAct 循环的工程实现中，下列哪项【不是】必备件？",options: ["最大步数/ token 预算封顶","工具错误的结构化回喂","相同工具+相同参数的循环检测","每步都用大模型全量反思一遍"],answer: 3,analysis: "反思 token 翻倍起，只在失败后/关键节点触发式使用；其余三项加上超时、每步留痕、幂等才是裸循环不翻车的必备件。",knowledge: "终止三件套：完成标志/预算/超时\n错误回喂让模型自纠而不是崩"},
+    {type: "single",topic: "agent",difficulty: 3,tags: ["上下文工程"],stem: "关于上下文工程（Context Engineering），正确的说法是？",options: ["就是写得更好的提示词","设计 Agent 每一轮能看到什么信息（取舍与组织整个循环的信息进出）","把全部历史塞满上下文窗口","只在任务开始时设置一次系统提示"],answer: 1,analysis: "prompt 工程优化单次调用怎么说；上下文工程优化循环里信息的增删隔离结构化。经典类比：Agent 是操作系统，LLM 是 CPU，上下文窗口是 RAM——上下文工程即内存管理。",knowledge: "三板斧：compaction 摘要 / 工具输出截断 / 子代理隔离\n长上下文模型仍需要（lost-in-middle + 成本）"},
+    {type: "judge",topic: "agent",difficulty: 3,tags: ["记忆"],stem: "Agent 的长期记忆应该把每一轮对话原文都写入库，以保证信息不丢失。",answer: false,analysis: "写入要挑剔：任务完成写总结、失败写教训、偏好经确认后写；全量入库会导致记忆膨胀与污染。每条记忆要带来源/置信度/TTL，检索时设相似度阈值，注入时标注为背景数据而非指令。",knowledge: "记忆污染 = 持久化的 prompt injection\n情景/语义/程序性三层分工"},
+    {type: "single",topic: "agent",difficulty: 3,tags: ["多智能体"],stem: "A2A 协议和 MCP 的分工，正确的是？",options: ["A2A 管 agent 用工具，MCP 管 agent 之间协作","MCP 管 agent 接工具/数据源，A2A 管 agent 之间的发现与协作","两者是竞争关系，二选一","A2A 是 MCP 的升级版"],answer: 1,analysis: "MCP 解决 agent↔工具接入标准化；A2A 解决 agent↔agent 互操作（Agent Card 能力发现、任务委托、artifacts 交换）。同系统内直接调用即可，跨组织才需要 A2A。",knowledge: "两者都只定义低层机制，安全委托/信任链要自建\nAgent Card = 能力 JSON 名片"},
+    {type: "judge",topic: "agent",difficulty: 2,tags: ["框架"],stem: "LangGraph 相比裸写 while 循环的核心增值是：状态图 + 检查点持久化 + 人在回路钩子。",answer: true,analysis: "图编排让流程显式可存档：断点恢复、时间旅行调试、interrupt 审批。简单线性 ReAct 用官方 SDK 循环更轻；复杂分支+持久化+人审才上图编排。",knowledge: "同类：AutoGen（对话式多体）/CrewAI（角色流水线）/OpenAI Agents SDK（handoff）"},
+    {type: "single",topic: "agent",difficulty: 4,tags: ["评测"],stem: "Agent 评测与单次 LLM 调用评测的核心差异是？",options: ["只需评测最终结果的正确率","还要做轨迹级评测：步数、工具选择、循环、错误恢复","只能靠人工打分","用 perplexity 就够了"],answer: 1,analysis: "三层：结果级（验收清单/测试通过率）、轨迹级（trajectory：LLM-as-judge + 规则断言）、组件级（回归）。只测结果不测轨迹会漏掉「结果对但绕 50 步」的成本炸弹。行业现状：89% 组织部署了 agent，仅 11-15% 有系统化评估。",knowledge: "先建金标任务集进 CI；纠错回流成新用例\n特有指标：每任务成本分布、人审介入率"},
+    {type: "qa",topic: "agent",difficulty: 4,tags: ["沙箱","安全"],stem: "Agent 执行代码/操作文件的沙箱要怎么设计？（要点）",answer: "分层隔离：① 进程级——独立容器/微 VM（gVisor/Firecracker），默认断网、白名单出网；② 文件系统——工作目录绑定挂载可写、其余只读、敏感路径（凭据/~/.ssh）不可见，磁盘配额；③ 能力级——工具白名单，危险操作（删库/对外发送/花钱）二次确认或禁用，凭据按任务发放用完即焚；④ 资源级——CPU/内存/时长/输出限额防失控烧钱。原则：prompt 是建议不是边界（注入即可绕过），沙箱必须默认拒绝。三问自检：能碰什么文件、能出什么网、能花多少钱。"},
   ],
 }
 
