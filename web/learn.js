@@ -52,6 +52,7 @@ async function boot() {
 
 /* ================= 初始化与视图切换 ================= */
 let kg = null
+let viewNeedsFit = true // 切主题 / 图谱数据变更时置 true，refreshGraph 里消费
 
 function initView() {
   if (!kg) {
@@ -73,7 +74,7 @@ function applyView() {
     b.classList.toggle('active', b.dataset.view === store.view)
   })
   $('#view-hint').textContent = graph
-    ? '点击节点 → 下方看知识点内容；拖拽平移，滚轮缩放'
+    ? '点击节点 → 下方看知识点内容；拖拽平移，滚轮/双指捏合缩放，右上 ⤢ 复位'
     : '← → 方向键或滑动切换知识卡；上方目录点击跳转'
   $('#btn-prev').textContent = graph ? '← 上一节' : '← 上一张'
   $('#btn-next').textContent = graph ? '下一节 →' : '下一张 →'
@@ -94,8 +95,13 @@ function refreshGraph() {
     chapters: t.chapters,
   })
   kg.select(store.selected)
-  if (store.selected) kg.centerOn(store.selected)
-  else kg.fit()
+  // 只有切换主题/图谱数据更新时才重置视图；
+  // 平时的字段刷新（如"标记已学"）保留用户当前的平移缩放。
+  if (viewNeedsFit) {
+    if (store.selected) kg.centerOn(store.selected)
+    else kg.fit()
+    viewNeedsFit = false
+  }
   renderLegend()
 }
 
@@ -250,6 +256,7 @@ function bindStatic() {
     store.topicId = li.dataset.topic
     store.selected = null
     store.slideIndex = 0
+    viewNeedsFit = true
     hideDetail()
     renderSidebar()
     applyView()
@@ -350,6 +357,7 @@ function connectSse() {
     store.topicId = store.graph.topics.some((t) => t.id === prevTopic) ? prevTopic : store.graph.topics[0].id
     if (store.selected && !nodeById(store.selected)) store.selected = null
     if (store.slideIndex >= nodes().length) store.slideIndex = 0
+    viewNeedsFit = true
     renderSidebar()
     applyView()
     if (prevSel && nodeById(prevSel)) {
@@ -361,6 +369,7 @@ function connectSse() {
     // 笔记被编辑：图谱未必重建，先重拉 graph（agent 通常会跟着 regen）；内容仍以 graph 为准
     try {
       store.graph = await fetchJson('/api/graph')
+      viewNeedsFit = true
       renderSidebar()
       applyView()
     } catch {}

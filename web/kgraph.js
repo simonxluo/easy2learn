@@ -1,6 +1,7 @@
 /**
  * easy2learn 内置知识图谱引擎（零依赖，canvas 力导向布局）
- * 交互：拖空白处平移 / 滚轮缩放(以光标为中心) / 拖节点 / 单击节点选中 / 单击空白取消
+ * 交互：拖空白处平移 / 滚轮或双指捏合缩放(以光标/双指中心为锚) / 拖节点 / 单击选中 / 单击空白取消
+ * 渲染：脏标记驱动 —— 力导向收敛(alpha→0)后，平移缩放仍会即时重绘。
  * 接口刻意对齐 cytoscape 风格，未来可无缝替换 web/vendor/ 下的真库。
  */
 const PALETTE = ['#5b8cff', '#7ee0a3', '#ffc86b', '#ff8fab', '#b28dff', '#6fd6e8', '#f2a06b', '#9dd65e']
@@ -21,7 +22,10 @@ export class KGraph {
     this.alpha = 0
     this.selected = null
     this._raf = null
-    this._pointer = null
+    this._dirty = false        // 视图/状态有变化，渲染循环据此重绘（修复：平移在力导向收敛后不再重绘）
+    this._pointers = new Map() // 多指管理：单指拖节点/平移，双指捏合缩放
+    this._pinch = null
+    this._sig = ''             // 数据结构签名：结构未变时原位刷新，不重排不重热
     this._destroyed = false
 
     this._bind()
@@ -42,6 +46,23 @@ export class KGraph {
     const colors = new Map()
     ;(chapters || []).forEach((c, i) => colors.set(c.id, PALETTE[i % PALETTE.length]))
     this.chapterColors = colors
+    // 结构签名相同（只是 done/label 等字段变化，如"标记已学"）：原位刷新，
+    // 保留当前布局与动画热度，不打扰用户的视图。
+    const sig = nodes.map((n) => n.id).join(',') + '|' + edges.map((e) => `${e.s}>${e.t}:${e.kind}`).join(',')
+    if (sig === this._sig) {
+      for (const n of nodes) {
+        const cur = this.byId.get(n.id)
+        if (cur) {
+          const keep = { x: cur.x, y: cur.y, vx: cur.vx, vy: cur.vy, r: cur.r, fx: cur.fx, fy: cur.fy }
+          Object.assign(cur, n, keep)
+        }
+      }
+      if (this.selected && !this.byId.has(this.selected)) this.selected = null
+      this._dirty = true
+      if (this.opts.onData) this.opts.onData()
+      return
+    }
+    this._sig = sig
     const old = this.byId
     this.nodes = nodes.map((n, i) => {
       const prev = old.get(n.id)
@@ -60,12 +81,13 @@ export class KGraph {
     this.alpha = 1
     for (let i = 0; i < 260; i++) this._tick() // 预收敛，避免开场乱飞
     this.alpha = 0.6
+    this._dirty = true
     if (this.opts.onData) this.opts.onData()
   }
 
   select(id) {
     this.selected = id
-    this.alpha = Math.max(this.alpha, 0.25)
+    this._dirty = true
   }
 
   fit() {
@@ -111,45 +133,88 @@ export class KGraph {
     c.addEventListener('pointerdown', (e) => {
       c.setPointerCapture(e.pointerId)
       const hit = this._hit(e.offsetX, e.offsetY)
-      this._pointer = { x: e.offsetX, y: e.offsetY, moved: 0, node: hit, panning: !hit }
       if (hit) { hit.fx = hit.x; hit.fy = hit.y }
+      this._pointers.set(e.pointerId, { x: e.offsetX, y: e.offsetY, moved: 0, node: hit })
+      if (this._pointers.size >= 2) this._beginPinch()
     })
     c.addEventListener('pointermove', (e) => {
-      const p = this._pointer
+      const p = this._pointers.get(e.pointerId)
       if (!p) return
       const dx = e.offsetX - p.x, dy = e.offsetY - p.y
       p.moved += Math.abs(dx) + Math.abs(dy)
       p.x = e.offsetX; p.y = e.offsetY
+      if (this._pointers.size >= 2 && this._pinch) {
+        // 双指：中心平移 + 间距比例缩放（锚点 = 双指中心）
+        const [a, b] = [...this._pointers.values()]
+        const d = Math.hypot(a.x - b.x, a.y - b.y) || 1
+        const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2
+        const k2 = Math.min(3, Math.max(0.15, this.view.k * (d / this._pinch.d)))
+        const wx = (this._pinch.cx - this.view.x) / this.view.k
+        const wy = (this._pinch.cy - this.view.y) / this.view.k
+        this.view.k = k2
+        this.view.x = cx - wx * k2
+        this.view.y = cy - wy * k2
+        this._pinch = { d, cx, cy }
+        this._dirty = true
+        return
+      }
       if (p.node) {
         p.node.fx = this._screenToWorldX(e.offsetX)
         p.node.fy = this._screenToWorldY(e.offsetY)
         this.alpha = Math.max(this.alpha, 0.3)
-      } else if (p.panning) {
-        this.view.x += dx; this.view.y += dy
+      } else {
+        // 平移：只改视图。重绘交给渲染循环的 _dirty 标记，
+        // 否则力导向收敛(alpha→0)后拖动画面不会更新。
+        this.view.x += dx
+        this.view.y += dy
+        this._dirty = true
       }
     })
-    c.addEventListener('pointerup', (e) => {
-      const p = this._pointer
-      this._pointer = null
+    const release = (e, cancelled) => {
+      const p = this._pointers.get(e.pointerId)
+      this._pointers.delete(e.pointerId)
+      if (this._pointers.size < 2) this._pinch = null
       if (!p) return
-      if (p.node) { p.node.fx = null; p.node.fy = null; this.alpha = Math.max(this.alpha, 0.3) }
-      if (p.moved < 6) {
+      if (p.node) {
+        p.node.fx = null; p.node.fy = null
+        this.alpha = Math.max(this.alpha, 0.3)
+        this._dirty = true
+      }
+      // 仅当这是唯一一根手指、且几乎没动过，才算"单击"
+      if (!cancelled && this._pointers.size === 0 && p.moved < 6) {
         const hit = this._hit(e.offsetX, e.offsetY)
         this.selected = hit ? hit.id : null
+        this._dirty = true
         if (this.opts.onTap) this.opts.onTap(hit ? hit.id : null)
-        this._render()
       }
-    })
+    }
+    c.addEventListener('pointerup', (e) => release(e, false))
+    // 手势被系统接管（如触控板手势/来电打断）时必须释放拖拽，
+    // 否则节点被 fx/fy 永久钉死在半路。
+    c.addEventListener('pointercancel', (e) => release(e, true))
     c.addEventListener('wheel', (e) => {
       e.preventDefault()
-      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12
+      // 指数平滑缩放：鼠标滚轮(±100)每档约 ±16%，触控板滚动/捏合(小 delta)细腻跟手；
+      // ctrlKey = 触控板捏合，delta 极小，用更大系数补偿。
+      const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY
+      const factor = Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0016))
       const k2 = Math.min(3, Math.max(0.15, this.view.k * factor))
       const wx = this._screenToWorldX(e.offsetX), wy = this._screenToWorldY(e.offsetY)
       this.view.k = k2
       this.view.x = e.offsetX - wx * k2
       this.view.y = e.offsetY - wy * k2
-      this._render()
+      this._dirty = true
     }, { passive: false })
+  }
+
+  _beginPinch() {
+    // 进入双指：放下单指拖着的节点，转为捏合手势
+    for (const p of this._pointers.values()) {
+      if (p.node) { p.node.fx = null; p.node.fy = null; p.node = null }
+      p.moved = 99 // 双指手势不触发单击
+    }
+    const [a, b] = [...this._pointers.values()]
+    this._pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 }
   }
 
   _resize() {
@@ -222,6 +287,10 @@ export class KGraph {
     if (this.alpha > 0.005) {
       this._tick()
       this.alpha *= 0.995
+      this._dirty = true
+    }
+    if (this._dirty) {
+      this._dirty = false
       this._render()
     }
     this._raf = requestAnimationFrame(() => this._loop())
