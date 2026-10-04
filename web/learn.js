@@ -86,7 +86,7 @@ function applyView() {
   })
   $('#view-hint').textContent = graph
     ? '点击节点 → 下方看知识点内容；拖拽平移，滚轮/双指捏合缩放，右上 ⤢ 复位'
-    : '左侧目录点击跳转（超出 20 条可上下滚）；右侧内容上下滚动阅读，←/→ 逐条切换'
+    : '左侧目录点击跳转（上下翻动）；内容左右翻卡阅读，←/→ 逐张切换，长卡内可上下滚'
   $('#btn-prev').textContent = graph ? '← 上一节' : '← 上一张'
   $('#btn-next').textContent = graph ? '下一节 →' : '下一张 →'
   if (graph) {
@@ -257,21 +257,22 @@ function cardEls() { return [...document.querySelectorAll('.slide-card')] }
 function scrollToCard(index, smooth = true) {
   const el = cardEls()[index]
   if (!el) return
-  // 纵向文档阅读：滚动到该知识卡顶部（留一点呼吸空间）
-  ;($('#slide-viewport')).scrollTo({ top: el.offsetTop - 12, behavior: smooth ? 'smooth' : 'auto' })
+  // 横向翻卡：滚动到该卡并水平居中
+  el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', inline: 'center', block: 'nearest' })
   renderCrumb()
   // 直接同步目录高亮，不依赖 scroll 事件追平（平滑动画中事件有延迟，
   // 某些环境甚至不派发——高亮状态必须由这次操作自己决定）
   updateTocActive()
 }
 
-/** 纵向滚动侦测（scroll-spy）：当前读到的知识卡 = 视口顶部附近的那张 */
+/** 横向滚动侦测（scroll-spy）：当前卡 = 最接近视口水平中心的那张 */
 function onSlideScroll() {
   const vp = $('#slide-viewport')
-  const probe = vp.scrollTop + 90 // 顶部往下一点作为「正在读」的判定位
+  const vpCenter = vp.getBoundingClientRect().left + vp.clientWidth / 2
   let best = 0, bestDist = Infinity
   cardEls().forEach((el, i) => {
-    const d = Math.abs(el.offsetTop - probe)
+    const mid = el.getBoundingClientRect().left + el.offsetWidth / 2
+    const d = Math.abs(mid - vpCenter)
     if (d < bestDist) { bestDist = d; best = i }
   })
   if (best !== store.slideIndex) {

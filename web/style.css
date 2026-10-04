@@ -272,29 +272,34 @@ a.ghost { display: inline-block; }
 .toc-item.active.done::before { color: #fff; }
 @media (max-width: 900px) { .slide-toc { width: 158px; } }
 
-/* 右侧：内容纵向阅读窗 */
+/* 右侧：内容横向翻卡视口（左右翻动），长卡内容在卡内上下滚 */
 .slide-right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .slide-viewport {
-  flex: 1; position: relative; /* 成为卡片的 offsetParent，offsetTop 即内容坐标，scrollTo 才能对准 */
-  overflow-y: auto; overflow-x: hidden;
-  scroll-snap-type: y proximity; /* 轻吸附：短卡对齐顶部，长文自由滚 */
-  overscroll-behavior: contain;
+  flex: 1; overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior: contain; /* 与左目录垂直滚动解耦：滚到头不外溢 */
 }
-.slide-track { padding: 20px 28px 60px; width: 100%; }
+.slide-track {
+  display: flex; gap: 18px; padding: 22px 32px; height: 100%;
+  align-items: center; /* 卡片高度随内容自适应并垂直居中，不被窗口拉出空白 */
+  width: max-content;
+}
 .slide-card {
-  scroll-snap-align: start;
-  width: 100%; max-width: 880px; margin: 0 auto 18px;
+  scroll-snap-align: center; width: min(760px, 82vw); flex-shrink: 0;
+  height: auto; max-height: 100%; min-height: 220px; /* 短卡不空旷、长卡卡内上下滚 */
   background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 20px 26px;
+  padding: 20px 26px; overflow-y: auto; overscroll-behavior: contain;
 }
 
 /* 常显可拖滚动条（macOS 悬浮条不动时隐形，这里强制可见可拉） */
-.slide-toc::-webkit-scrollbar, .slide-viewport::-webkit-scrollbar { width: 10px; }
-.slide-toc::-webkit-scrollbar-track, .slide-viewport::-webkit-scrollbar-track { background: transparent; }
-.slide-toc::-webkit-scrollbar-thumb, .slide-viewport::-webkit-scrollbar-thumb {
+.slide-toc::-webkit-scrollbar { width: 10px; }
+.slide-viewport::-webkit-scrollbar { height: 10px; }
+.slide-card::-webkit-scrollbar { width: 8px; }
+.slide-toc::-webkit-scrollbar-track, .slide-viewport::-webkit-scrollbar-track, .slide-card::-webkit-scrollbar-track { background: transparent; }
+.slide-toc::-webkit-scrollbar-thumb, .slide-viewport::-webkit-scrollbar-thumb, .slide-card::-webkit-scrollbar-thumb {
   background: #465064; border-radius: 999px; border: 2px solid var(--bg2);
 }
-.slide-toc::-webkit-scrollbar-thumb:hover, .slide-viewport::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+.slide-toc::-webkit-scrollbar-thumb:hover, .slide-viewport::-webkit-scrollbar-thumb:hover, .slide-card::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
 .card-head { display: flex; gap: 8px; align-items: center; }
 .card-head .badge { margin-right: auto; }
