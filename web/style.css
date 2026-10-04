@@ -281,7 +281,7 @@ a.ghost { display: inline-block; }
 }
 .slide-track {
   display: flex; gap: 18px; padding: 22px 32px; height: 100%;
-  align-items: center; /* 卡片高度随内容自适应并垂直居中，不被窗口拉出空白 */
+  align-items: flex-start; /* 卡片从顶部开始排，短卡不留顶部空白；长卡仍占满视口高 */
   width: max-content;
 }
 .slide-card {
