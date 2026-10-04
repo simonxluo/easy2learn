@@ -248,6 +248,7 @@ function renderSlideMode() {
 
   scrollToCard(store.slideIndex, false)
   updateTocActive()
+  updateSeek()
 }
 
 function shortLabel(s) { return s.length > 10 ? `${s.slice(0, 9)}…` : s }
@@ -259,9 +260,10 @@ function scrollToCard(index, smooth = true) {
   if (!el) return
   el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', inline: 'center', block: 'nearest' })
   renderCrumb()
-  // 直接同步目录高亮，不依赖 scroll 事件追平（平滑动画中事件有延迟，
+  // 直接同步目录高亮与进度条，不依赖 scroll 事件追平（平滑动画中事件有延迟，
   // 某些环境甚至不派发——高亮状态必须由这次操作自己决定）
   updateTocActive()
+  updateSeek()
 }
 
 function onSlideScroll() {
@@ -277,7 +279,27 @@ function onSlideScroll() {
     store.slideIndex = best
     updateTocActive()
     renderCrumb()
+    updateSeek()
   }
+}
+
+/* ================= 底部拖动进度条 ================= */
+function updateSeek() {
+  const us = units()
+  const thumb = $('#seek-thumb'), label = $('#seek-label')
+  if (!thumb || !us.length) return
+  thumb.style.left = `${((store.slideIndex + 0.5) / us.length) * 100}%`
+  label.textContent = `${store.slideIndex + 1}/${us.length}`
+}
+
+function seekFromEvent(e) {
+  const track = $('#seek-track')
+  const r = track.getBoundingClientRect()
+  const frac = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width))
+  const n = units().length
+  if (!n) return
+  store.slideIndex = Math.min(n - 1, Math.max(0, Math.floor(frac * n)))
+  scrollToCard(store.slideIndex, false) // 拖动用瞬时滚动，跟手
 }
 
 function updateTocActive() {
@@ -330,6 +352,23 @@ function bindStatic() {
     if (mark) toggleLearned(mark.dataset.mark)
   })
   $('#slide-viewport').addEventListener('scroll', onSlideScroll, { passive: true })
+  // 底部拖动条：按下/拖动/点击 快速定位卡片
+  const seekTrack = $('#seek-track')
+  let seeking = false
+  seekTrack.addEventListener('pointerdown', (e) => {
+    seeking = true
+    seekTrack.setPointerCapture(e.pointerId)
+    $('#seek-thumb').classList.add('dragging')
+    seekFromEvent(e)
+  })
+  seekTrack.addEventListener('pointermove', (e) => { if (seeking) seekFromEvent(e) })
+  const endSeek = () => {
+    if (!seeking) return
+    seeking = false
+    $('#seek-thumb').classList.remove('dragging')
+  }
+  seekTrack.addEventListener('pointerup', endSeek)
+  seekTrack.addEventListener('pointercancel', endSeek)
   $('#reset-progress').addEventListener('click', () => {
     if (!confirm('清空全部学习进度？')) return
     store.learned = {}
