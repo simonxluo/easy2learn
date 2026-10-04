@@ -13,6 +13,49 @@ function str(args, key) {
   return typeof args[key] === 'string' ? args[key].trim() : ''
 }
 
+/** 进程内没有服务实例时，退化为 HTTP 调用（复用独立进程场景） */
+async function bankViaHttp(config, args, action) {
+  const base = `http://127.0.0.1:${config.port}`
+  const send = async (method, pathname, body) => {
+    let res
+    try {
+      res = await fetch(base + pathname, {
+        method,
+        headers: body ? { 'Content-Type': 'application/json' } : {},
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(3000),
+      })
+    } catch {
+      throw new BankError('服务未启动，先调用 easy2learn_start')
+    }
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new BankError(data.error || `HTTP ${res.status}`)
+    return data
+  }
+  if (action === 'list') {
+    const state = await send('GET', '/api/state')
+    let qs = state.questions
+    if (args.topic) qs = qs.filter((q) => q.topic === args.topic)
+    if (args.type) qs = qs.filter((q) => q.type === args.type)
+    return {
+      total: state.questions.length,
+      filtered: qs.length,
+      questions: qs.map((q) => ({
+        id: q.id,
+        type: q.type,
+        topic: q.topic,
+        difficulty: q.difficulty,
+        tags: q.tags || [],
+        stem: q.stem.length > 60 ? `${q.stem.slice(0, 60)}…` : q.stem,
+      })),
+    }
+  }
+  if (action === 'add') return send('POST', '/api/questions', args.question)
+  if (action === 'update') return send('PUT', `/api/questions/${encodeURIComponent(str(args, 'id'))}`, args.question)
+  if (action === 'delete') return send('DELETE', `/api/questions/${encodeURIComponent(str(args, 'id'))}`)
+  throw new BankError(`未知 action: ${action}`)
+}
+
 export function buildTools(config) {
   return [
     {
@@ -68,15 +111,15 @@ export function buildTools(config) {
       async execute(rawArgs) {
         const args = rawArgs || {}
         const action = str(args, 'action')
-        if (!serverStatus().running) throw new BankError('服务未启动，先调用 easy2learn_start')
+        const live = getLiveState()
+        if (!live) return bankViaHttp(config, args, action)
 
         if (action === 'list') {
-          const state = getLiveState()
-          let qs = state.bank.questions
+          let qs = live.bank.questions
           if (args.topic) qs = qs.filter((q) => q.topic === args.topic)
           if (args.type) qs = qs.filter((q) => q.type === args.type)
           return {
-            total: state.bank.questions.length,
+            total: live.bank.questions.length,
             filtered: qs.length,
             questions: qs.map((q) => ({
               id: q.id,
@@ -135,11 +178,28 @@ export function buildTools(config) {
       async execute() {
         const status = serverStatus()
         const info = { ...status, langs: null, byType: null }
-        if (status.running) {
-          const state = getLiveState()
-          info.langs = availableLangs()
+        let state = getLiveState()
+        if (!state) {
+          // 探测是否有独立进程在服务
+          try {
+            const res = await fetch(`http://127.0.0.1:${config.port}/api/state`, { signal: AbortSignal.timeout(1500) })
+            if (res.ok) {
+              state = await res.json()
+              Object.assign(info, {
+                running: true,
+                port: config.port,
+                url: `http://127.0.0.1:${config.port}/`,
+                questions: state.questions?.length ?? 0,
+                note: '由独立进程(standalone)提供服务',
+              })
+            }
+          } catch {}
+        }
+        if (state) {
+          info.langs = state.langs || availableLangs()
+          const qs = state.questions || state.bank?.questions || []
           const byType = {}
-          for (const q of state.bank.questions) byType[q.type] = (byType[q.type] || 0) + 1
+          for (const q of qs) byType[q.type] = (byType[q.type] || 0) + 1
           info.byType = byType
         }
         return info

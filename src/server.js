@@ -49,6 +49,21 @@ export async function ensureServer(config) {
     }
     return serverStatus()
   }
+  // 端口上已有独立进程在服务（如 standalone 启动的）→ 直接复用
+  try {
+    const res = await fetch(`http://127.0.0.1:${config.port}/api/state`, { signal: AbortSignal.timeout(1500) })
+    if (res.ok) {
+      const state = await res.json()
+      return {
+        running: true,
+        port: config.port,
+        url: `http://127.0.0.1:${config.port}/`,
+        questions: state.questions?.length ?? 0,
+        topics: (state.topics || []).map((t) => t.id),
+        note: '检测到该端口已有 easy2learn 进程，直接复用（工具走 HTTP 或文件生效）',
+      }
+    }
+  } catch {}
   await startServer(config)
   return serverStatus()
 }
