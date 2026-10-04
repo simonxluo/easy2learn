@@ -79,6 +79,7 @@ function applyView() {
   $('#btn-prev').textContent = graph ? '← 上一节' : '← 上一张'
   $('#btn-next').textContent = graph ? '下一节 →' : '下一张 →'
   if (graph) {
+    kg.resize() // 容器刚解除 display:none，同步用真实尺寸重设画布（不等 RO 异步回调）
     refreshGraph()
     if (store.selected) showDetail(store.selected)
   } else {

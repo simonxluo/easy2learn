@@ -119,6 +119,9 @@ export class KGraph {
     this._render()
   }
 
+  /** 供外部在容器重新显示后主动同步尺寸（如视图切换），不依赖 RO 的异步回调 */
+  resize() { this._resize() }
+
   destroy() {
     this._destroyed = true
     cancelAnimationFrame(this._raf)
@@ -220,6 +223,10 @@ export class KGraph {
   _resize() {
     const dpr = window.devicePixelRatio || 1
     const rect = this.el.getBoundingClientRect()
+    // 容器隐藏(display:none)时 rect 为 0：跳过，保留上一次的有效尺寸。
+    // 否则画布被钳到 50×50、CSS 尺寸 0px，重新显示后若 RO 不再派发，
+    // 图谱会永远消失（且 50px 的布局窗口会把力导向初始位置挤爆）。
+    if (rect.width < 5 || rect.height < 5) return
     this.canvas.width = Math.max(50, rect.width * dpr)
     this.canvas.height = Math.max(50, rect.height * dpr)
     this.canvas.style.width = `${rect.width}px`
