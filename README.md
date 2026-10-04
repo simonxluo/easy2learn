@@ -47,7 +47,8 @@ node src/standalone.js 8899   # 指定端口
 |---|---|
 | `easy2learn_start` | 启动网页服务，返回 URL（幂等） |
 | `easy2learn_bank` | list / add / update / delete 题目（实时推送到打开的页面） |
-| `easy2learn_health` | 自检：URL、题量、题型分布、判题链路、在线页面数 |
+| `easy2learn_graph` | 知识图谱管理：`regen`（笔记+扩展数据重建）/ `list` / `add-edge`·`remove-edge`（跨知识点关联，持久化到 graph-extra.json）/ `add-node`·`update-node`·`delete-node`（手工知识点） |
+| `easy2learn_health` | 自检：URL、题量、题型分布、图谱规模、判题链路、在线页面数 |
 
 配置（profile 的 cordis.patch.yml 中覆盖 `tool-easy2learn`）：
 
@@ -59,7 +60,9 @@ node src/standalone.js 8899   # 指定端口
     root: /Users/simonluo/workspace   # 笔记允许的根目录
 ```
 
-## 数据模型（data/bank.json）
+## 数据模型与控制流
+
+### 题库 `data/bank.json`（src/bank.js）
 
 ```jsonc
 {
@@ -93,27 +96,51 @@ node src/standalone.js 8899   # 指定端口
 node scripts/gen-bank.mjs
 ```
 
+### 知识图谱 `data/graph.json`（src/graph.js）
+
+```jsonc
+{
+  "generatedAt": "…", "engine": "builtin-force",
+  "topics": [{
+    "id": "os", "name": "操作系统", "note": "interview-prep/os/操作系统.md",
+    "chapters": [{ "id": "slug", "name": "进程与线程" }],
+    "nodes":   [{ "id": "os:xxx", "chapter": "slug", "label": "知识点", "content": "markdown" }],
+    "edges":   [{ "s": "节点id", "t": "节点id", "kind": "seq|rel", "label": "关联理由" }],
+    "warnings": ["未匹配的策展边"]
+  }]
+}
+```
+
+**构建分层**（`buildGraphFromNotes`）：
+- 笔记 `## 📇 问答卡片` → 节点主体（label/content）+ 章节 + 章节内顺序链（`kind=seq`）
+- `data/graph-extra.json` → 跨章节语义关联（`kind=rel`）与手工节点；**工具增删也写这里，regen 不丢**（兼容 `[s,t,label]` 数组与 `{s,t,label}` 对象两种形式）
+
+重建：`node scripts/gen-graph.mjs`（CLI 薄壳，逻辑在 src/graph.js）或工具 `easy2learn_graph {action:"regen"}`。
+
+### 控制流
+
+```
+agent 工具 (bank/graph) ──┐
+HTTP API ────────────────┤→ server.js ─┬→ bank.json / graph.json（原子落盘，内存态优先）
+直接编辑 web/ 前端 ───────┤             ├→ fs.watch(data/) 按文件分流 → SSE bank|graph
+直接编辑 graph-extra.json ┤             ├→ fs.watch(web/)  → SSE reload（页面整页刷新）
+直接编辑笔记 md ──────────┘             ├→ fs.watch(notesRoots) → SSE notes（提示 regen）
+                                       └→ runner.js → g++/python3/node 本地判题
+浏览器：SSE bank/graph → 静默重拉；reload → 刷新；notes → 重拉 graph
+```
+
 ## HTTP API（页面与 agent 共用）
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/state` | 全量状态（题库 + 可用判题语言） |
+| GET | `/api/state` | 全量状态（题库 + 图谱规模 + 可用判题语言） |
+| GET | `/api/graph` | 知识图谱（内存态） |
 | POST | `/api/questions` | 新增题目 |
 | PUT | `/api/questions/:id` | patch 合并更新 |
 | DELETE | `/api/questions/:id` | 删除 |
 | POST | `/api/run` | `{lang, code, tests}` → 本地编译运行判题 |
 | GET | `/api/notes?p=…` | 读白名单内的 markdown 笔记 |
-| GET | `/api/events` | SSE：`bank`（题库变更）/ `reload`（前端文件变更） |
-
-## 控制流
-
-```
-agent (tools/API) ──┐
-                    ├─→ server.js ──→ bank.json（落盘，原子写）
-直接编辑 web/ 文件 ─┤       │
-直接改 bank.json ───┘       ├─→ fs.watch ─→ SSE 推送 ─→ 浏览器实时更新
-                            └─→ runner.js ─→ g++/python3/node 本地判题
-```
+| GET | `/api/events` | SSE：`bank` / `graph` / `notes` / `reload` / `graph-extra` |
 
 ## License
 

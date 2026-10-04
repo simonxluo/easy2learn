@@ -343,14 +343,27 @@ function connectSse() {
     $('#conn-dot').className = 'dot on'
     $('#live-badge').classList.remove('hidden')
   })
-  es.addEventListener('notes', async () => {
+  es.addEventListener('graph', async () => {
     const prevTopic = store.topicId
+    const prevSel = store.selected
     store.graph = await fetchJson('/api/graph')
     store.topicId = store.graph.topics.some((t) => t.id === prevTopic) ? prevTopic : store.graph.topics[0].id
     if (store.selected && !nodeById(store.selected)) store.selected = null
     if (store.slideIndex >= nodes().length) store.slideIndex = 0
     renderSidebar()
     applyView()
+    if (prevSel && nodeById(prevSel)) {
+      store.selected = prevSel
+      if (store.view === 'graph') selectNode(prevSel)
+    }
+  })
+  es.addEventListener('notes', async () => {
+    // 笔记被编辑：图谱未必重建，先重拉 graph（agent 通常会跟着 regen）；内容仍以 graph 为准
+    try {
+      store.graph = await fetchJson('/api/graph')
+      renderSidebar()
+      applyView()
+    } catch {}
   })
   es.addEventListener('reload', () => location.reload())
   es.onerror = () => {

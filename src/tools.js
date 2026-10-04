@@ -1,7 +1,17 @@
-/** easy2learn 工具定义：easy2learn_start / easy2learn_bank / easy2learn_health */
+/** easy2learn 工具定义：easy2learn_start / easy2learn_bank / easy2learn_graph / easy2learn_health */
 import { BankError, validateQuestion } from './bank.js'
+import {
+  GraphError,
+  appendExtraEdge,
+  buildGraphFromNotes,
+  findNodeId,
+  nodeIdFor,
+  readExtra,
+  removeExtraEdge,
+  writeExtra,
+} from './graph.js'
 import { availableLangs } from './runner.js'
-import { ensureServer, getLiveState, mutateBank, serverStatus } from './server.js'
+import { ensureServer, getLiveState, mutateBank, mutateGraph, applyGraph, serverStatus } from './server.js'
 
 const OBJ_SCHEMA = { type: 'object', additionalProperties: true }
 
@@ -11,6 +21,24 @@ function block(text) {
 
 function str(args, key) {
   return typeof args[key] === 'string' ? args[key].trim() : ''
+}
+
+/** extra 手工节点与图内节点的对应（extra 只存 label，靠 label 相等 + 目标 id 定位） */
+function labelMatchesExtraNode(topic, extraNode, nodeId) {
+  return topic.nodes.some((n) => n.id === nodeId && n.label === extraNode.label)
+}
+
+function renderGraphOp(v) {
+  if (v && Array.isArray(v.topics)) {
+    const lines = ['知识图谱：']
+    for (const t of v.topics) {
+      lines.push(`- ${t.name}(${t.id}): ${t.nodes} 节点 / ${t.relEdges} 条关联边 · 章节 ${t.chapters.join('/')}`)
+      if (t.warnings?.length) lines.push(`  ⚠️ ${t.warnings.join('; ')}`)
+    }
+    if (v.extraPath) lines.push(`扩展数据: ${v.extraPath}`)
+    return lines.join('\n')
+  }
+  return JSON.stringify(v, null, 2)
 }
 
 /** 进程内没有服务实例时，退化为 HTTP 调用（复用独立进程场景） */
@@ -77,6 +105,7 @@ export function buildTools(config) {
       async execute(rawArgs) {
         const args = rawArgs || {}
         const merged = {
+          ...config,
           port: typeof args.port === 'number' ? args.port : config.port,
           bankPath: str(args, 'bankPath') || config.bankPath,
           root: str(args, 'root') || config.root,
@@ -171,15 +200,186 @@ export function buildTools(config) {
       },
     },
     {
+      name: 'easy2learn_graph',
+      description:
+        '管理 easy2learn 学习页的知识图谱(页面实时刷新)：' +
+        'regen=从本地笔记+data/graph-extra.json 重建图谱(改完笔记后调用)；list=查看各 topic 节点/边概览；' +
+        'add-edge=新增跨知识点关联(同时持久化到 graph-extra.json，regen 不丢)；remove-edge=删除关联；' +
+        'add-node/update-node/delete-node=管理手工补充的知识点(同样持久化)。' +
+        '用户想串联知识点、要求加关联或改图谱时用本工具。',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: {
+            type: 'string',
+            enum: ['regen', 'list', 'add-edge', 'remove-edge', 'add-node', 'update-node', 'delete-node'],
+            description: '操作类型',
+          },
+          topic: { type: 'string', description: 'topic id，如 os / cpp' },
+          s: { type: 'string', description: '边的起点：节点 id 或 label 子串(add-edge/remove-edge)' },
+          t: { type: 'string', description: '边的终点：节点 id 或 label 子串(add-edge/remove-edge)' },
+          label: { type: 'string', description: '关联理由(显示在图上)，如「共享内存需同步」' },
+          id: { type: 'string', description: 'update-node/delete-node 的节点 id' },
+          nodeLabel: { type: 'string', description: 'add-node/update-node 的知识点标题' },
+          chapter: { type: 'string', description: '章节名(新章节会自动创建)' },
+          content: { type: 'string', description: '知识点内容(markdown)' },
+        },
+        required: ['action'],
+        additionalProperties: false,
+      },
+      output: { schema: OBJ_SCHEMA, render: (_a, v) => block(renderGraphOp(v)) },
+      async execute(rawArgs) {
+        const args = rawArgs || {}
+        const action = str(args, 'action')
+        const live = getLiveState()
+        if (!live) throw new GraphError('服务未启动，先调用 easy2learn_start')
+
+        if (action === 'regen') {
+          const graph = buildGraphFromNotes({ root: live.root, topics: live.bank.topics, extraPath: live.extraPath })
+          return applyGraph(graph)
+        }
+
+        if (action === 'list') {
+          return {
+            extraPath: live.extraPath,
+            topics: live.graph.topics.map((t) => ({
+              id: t.id,
+              name: t.name,
+              nodes: t.nodes.length,
+              relEdges: t.edges.filter((e) => e.kind === 'rel').length,
+              chapters: t.chapters.map((c) => c.name),
+              warnings: t.warnings,
+            })),
+          }
+        }
+
+        const topicId = str(args, 'topic')
+        if (!topicId) throw new GraphError('本操作需要 topic 参数(os/cpp)')
+        const topic = live.graph.topics.find((t) => t.id === topicId)
+        if (!topic) throw new GraphError(`graph 里没有 topic: ${topicId}(可用 ${live.graph.topics.map((t) => t.id).join('/')})`)
+
+        if (action === 'add-edge' || action === 'remove-edge') {
+          const sRaw = str(args, 's'), tRaw = str(args, 't')
+          if (!sRaw || !tRaw) throw new GraphError('需要 s 和 t(节点 id 或 label 子串)')
+          const extra = readExtra(live.extraPath)
+          if (action === 'add-edge') {
+            const s = findNodeId(topic.nodes, sRaw)
+            const t = findNodeId(topic.nodes, tRaw)
+            if (!s) throw new GraphError(`s 未匹配到节点: ${sRaw}`)
+            if (!t) throw new GraphError(`t 未匹配到节点: ${tRaw}`)
+            const added = appendExtraEdge(extra, topicId, { s, t, label: str(args, 'label') })
+            writeExtra(live.extraPath, extra)
+            const out = mutateGraph((g) => {
+              const tp = g.topics.find((x) => x.id === topicId)
+              const dup = tp.edges.some((e) => (e.s === s && e.t === t) || (e.s === t && e.t === s))
+              if (!dup) tp.edges.push({ s, t, kind: 'rel', label: str(args, 'label') })
+              return { edge: `${s} -> ${t}`, persisted: 'graph-extra.json', duplicated: dup }
+            })
+            return added ? out : { ...out, note: 'graph-extra.json 里已存在该关联(双向去重)' }
+          }
+          const removed = removeExtraEdge(extra, topicId, sRaw, tRaw)
+          // extra 里存的是原始子串，也可能存的是 id；再按 id 删一遍
+          const s = findNodeId(topic.nodes, sRaw), t = findNodeId(topic.nodes, tRaw)
+          if (s && t) removeExtraEdge(extra, topicId, s, t)
+          writeExtra(live.extraPath, extra)
+          return mutateGraph((g) => {
+            const tp = g.topics.find((x) => x.id === topicId)
+            const before = tp.edges.length
+            tp.edges = tp.edges.filter((e) => {
+              const byRaw = (e.s === sRaw && e.t === tRaw) || (e.s === tRaw && e.t === sRaw)
+              const byId = Boolean(s && t) && ((e.s === s && e.t === t) || (e.s === t && e.t === s))
+              return !(byRaw || byId)
+            })
+            return { removedFromExtra: removed, removedFromGraph: before - tp.edges.length }
+          })
+        }
+
+        if (action === 'add-node') {
+          const label = str(args, 'nodeLabel')
+          if (!label) throw new GraphError('add-node 需要 nodeLabel')
+          const content = str(args, 'content')
+          const chapterName = str(args, 'chapter') || '补充'
+          const extra = readExtra(live.extraPath)
+          const bucket = extra[topicId] || (extra[topicId] = { edges: [], nodes: [] })
+          if (bucket.nodes.some((n) => n.label === label)) throw new GraphError('graph-extra.json 已有同名手工节点')
+          bucket.nodes.push({ label, chapter: chapterName, content })
+          writeExtra(live.extraPath, extra)
+          return mutateGraph((g) => {
+            const tp = g.topics.find((x) => x.id === topicId)
+            let chap = tp.chapters.find((c) => c.name === chapterName)
+            if (!chap) {
+              chap = { id: chapterName, name: chapterName }
+              tp.chapters.push(chap)
+            }
+            const id = nodeIdFor(tp, label)
+            tp.nodes.push({ id, chapter: chap.id, label, content })
+            return { id, chapter: chap.name, persisted: 'graph-extra.json' }
+          })
+        }
+
+        if (action === 'update-node') {
+          const id = str(args, 'id')
+          const node = topic.nodes.find((n) => n.id === id)
+          if (!node) throw new GraphError(`节点不存在: ${id}`)
+          const patch = {}
+          if (str(args, 'nodeLabel')) patch.label = str(args, 'nodeLabel')
+          if (str(args, 'content')) patch.content = str(args, 'content')
+          if (str(args, 'chapter')) {
+            const name = str(args, 'chapter')
+            patch.chapter = name // normalizeGraph/前端按名称或 id 匹配；regen 时 ensureChapter 兜底
+          }
+          // 手工节点同步回 extra（笔记节点的内容以笔记为准，不回写）
+          const extra = readExtra(live.extraPath)
+          const bucket = extra[topicId]
+          if (bucket) {
+            const en = bucket.nodes.find((n) => labelMatchesExtraNode(topic, n, id))
+            if (en) Object.assign(en, patch.label ? { label: patch.label } : {}, patch.content !== undefined ? { content: patch.content } : {}, patch.chapter ? { chapter: patch.chapter } : {})
+            writeExtra(live.extraPath, extra)
+          }
+          return mutateGraph((g) => {
+            const tp = g.topics.find((x) => x.id === topicId)
+            const n = tp.nodes.find((x) => x.id === id)
+            Object.assign(n, patch)
+            if (patch.chapter && !tp.chapters.some((c) => c.id === patch.chapter || c.name === patch.chapter)) {
+              tp.chapters.push({ id: patch.chapter, name: patch.chapter })
+            }
+            return { id, updated: Object.keys(patch) }
+          })
+        }
+
+        if (action === 'delete-node') {
+          const id = str(args, 'id')
+          if (!topic.nodes.some((n) => n.id === id)) throw new GraphError(`节点不存在: ${id}`)
+          const extra = readExtra(live.extraPath)
+          const bucket = extra[topicId]
+          if (bucket) {
+            bucket.nodes = bucket.nodes.filter((n) => !labelMatchesExtraNode(topic, n, id))
+            writeExtra(live.extraPath, extra)
+          }
+          return mutateGraph((g) => {
+            const tp = g.topics.find((x) => x.id === topicId)
+            const before = tp.nodes.length
+            tp.nodes = tp.nodes.filter((n) => n.id !== id)
+            tp.edges = tp.edges.filter((e) => e.s !== id && e.t !== id)
+            return { deleted: id, nodesBefore: before, nodesAfter: tp.nodes.length, note: '笔记生成的节点 regen 后会恢复；要彻底移除请改笔记' }
+          })
+        }
+
+        throw new GraphError(`未知 action: ${action}`)
+      },
+    },
+    {
       name: 'easy2learn_health',
-      description: 'easy2learn 自检：服务是否在跑、URL、题量、题型分布、可用判题语言、SSE 在线页面数。',
+      description: 'easy2learn 自检：服务是否在跑、URL、题量、题型分布、知识图谱规模、可用判题语言、SSE 在线页面数。',
       parameters: { type: 'object', properties: {}, additionalProperties: false },
       output: { schema: OBJ_SCHEMA, render: (_a, v) => block(renderHealth(v)) },
       async execute() {
         const status = serverStatus()
-        const info = { ...status, langs: null, byType: null }
+        const info = { ...status, langs: null, byType: null, graphTopics: null }
         let state = getLiveState()
-        if (!state) {
+        if (state) {
+          state = { questions: state.bank.questions, langs: availableLangs(), graphTopics: (state.graph.topics || []).map((t) => ({ id: t.id, nodes: t.nodes.length, edges: t.edges.length })) }
+        } else {
           // 探测是否有独立进程在服务
           try {
             const res = await fetch(`http://127.0.0.1:${config.port}/api/state`, { signal: AbortSignal.timeout(1500) })
@@ -197,10 +397,11 @@ export function buildTools(config) {
         }
         if (state) {
           info.langs = state.langs || availableLangs()
-          const qs = state.questions || state.bank?.questions || []
+          const qs = state.questions || []
           const byType = {}
           for (const q of qs) byType[q.type] = (byType[q.type] || 0) + 1
           info.byType = byType
+          info.graphTopics = state.graphTopics || null
         }
         return info
       },
@@ -235,6 +436,7 @@ function renderHealth(v) {
   const r = v || {}
   if (!r.running) return 'easy2learn 未运行(调用 easy2learn_start 启动)'
   const byType = Object.entries(r.byType || {}).map(([k, n]) => `${k}:${n}`).join(' ')
+  const graph = (r.graphTopics || []).map((t) => `${t.id}${t.nodes}n/${t.edges}e`).join(' ')
   const langs = Object.entries(r.langs || {}).map(([k, ok]) => `${k}${ok ? '✓' : '✗'}`).join(' ')
-  return `easy2learn 运行中 ${r.url}，${r.questions} 题(${byType})，判题链路 ${langs}，在线页面 ${r.clients ?? 0}，uptime ${Math.round((r.uptimeMs || 0) / 1000)}s`
+  return `easy2learn 运行中 ${r.url}，${r.questions} 题(${byType})，图谱 ${graph}，判题链路 ${langs}，在线页面 ${r.clients ?? 0}，uptime ${Math.round((r.uptimeMs || 0) / 1000)}s`
 }

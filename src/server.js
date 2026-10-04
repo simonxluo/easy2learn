@@ -2,14 +2,20 @@
  * easy2learn 服务端（零依赖）：
  * - 静态托管 web/（禁缓存，agent 改前端文件即时可见）
  * - 题库 API：GET /api/state、POST/PUT/DELETE /api/questions
+ * - 图谱 API：GET /api/graph（内存态，来自 data/graph.json）
  * - 本地判题：POST /api/run
  * - 笔记读取：GET /api/notes?p=...（限制在 root 允许范围内）
- * - SSE 热更新：GET /api/events（bank 变更 / 前端文件变更 → 页面自动刷新）
+ * - SSE 热更新：GET /api/events
+ *   · bank  = 题库变更（工具/API/直接改文件）
+ *   · graph = 知识图谱变更（regen/直接改文件）
+ *   · notes = 笔记 md 被编辑（提示需要 regen，学习页会顺带重拉 graph）
+ *   · reload = web/ 前端文件变更 → 页面整页刷新
  */
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { BankError, loadBank, nextId, saveBank, validateQuestion } from './bank.js'
+import { GraphError, loadGraph, saveGraph } from './graph.js'
 import { availableLangs, runSubmission } from './runner.js'
 
 let current = null
@@ -19,12 +25,28 @@ export function getLiveState() {
   return current ? current.state : null
 }
 
-/** 供工具直接变更题库：fn(bank) => result，自动落盘并广播 SSE */
+/** 供工具直接变更题库：fn(bank) => result，自动落盘并广播 SSE bank */
 export function mutateBank(fn) {
   if (!current) throw new BankError('服务未启动')
   const out = fn(current.state.bank)
   persist(current.state, current.server._e2lClients)
   return out
+}
+
+/** 供工具直接变更图谱：fn(graph) => result，自动落盘并广播 SSE graph */
+export function mutateGraph(fn) {
+  if (!current) throw new GraphError('服务未启动')
+  const out = fn(current.state.graph)
+  persistGraph(current.state, current.server._e2lClients)
+  return out
+}
+
+/** 供工具整体替换图谱（如 regen 后）：落盘 + 广播 */
+export function applyGraph(graph) {
+  if (!current) throw new GraphError('服务未启动')
+  current.state.graph = graph
+  persistGraph(current.state, current.server._e2lClients)
+  return { topics: graph.topics.length }
 }
 
 export function serverStatus() {
@@ -36,8 +58,10 @@ export function serverStatus() {
     url: `http://127.0.0.1:${state.port}/`,
     uptimeMs: Date.now() - state.startedAt,
     questions: state.bank.questions.length,
+    graphTopics: (state.graph.topics || []).map((t) => ({ id: t.id, nodes: t.nodes.length, edges: t.edges.length })),
     topics: state.bank.topics.map((t) => t.id),
     lastBankChange: state.lastBankChange,
+    lastGraphChange: state.lastGraphChange,
     clients: server._e2lClients ? server._e2lClients.size : 0,
   }
 }
@@ -82,8 +106,10 @@ async function startServer(config) {
   const state = {
     ...config,
     bank: loadBank(config.bankPath),
+    graph: loadGraph(config.graphPath),
     startedAt: Date.now(),
     lastBankChange: null,
+    lastGraphChange: null,
   }
   const clients = new Set()
   const server = http.createServer((req, res) => handle(req, res, state, clients))
@@ -93,22 +119,39 @@ async function startServer(config) {
     server.listen(state.port, '127.0.0.1', resolve)
   })
 
-  const debounce = { bank: null, web: null }
+  const debounce = { data: null, web: null }
   const watchers = []
-  // 题库目录：外部直接改 bank.json（如 agent 用编辑器）→ 重载并广播 bank
+  // data 目录：bank.json / graph.json / graph-extra.json 被外部直接修改 → 分别重载并广播
   try {
+    const bankName = path.basename(state.bankPath)
+    const graphName = path.basename(state.graphPath)
+    const extraName = path.basename(state.extraPath)
     watchers.push(
-      fs.watch(path.dirname(state.bankPath), { recursive: false }, () => {
-        clearTimeout(debounce.bank)
-        debounce.bank = setTimeout(() => {
+      fs.watch(path.dirname(state.bankPath), { recursive: false }, (_evt, file) => {
+        clearTimeout(debounce.data)
+        debounce.data = setTimeout(() => {
           if (!current) return
+          const name = path.basename(String(file || ''))
           if (Date.now() - (state.lastSelfSave || 0) < 400) return // 自己刚落盘，跳过
-          try {
-            state.bank = loadBank(state.bankPath)
-            state.lastBankChange = new Date().toISOString()
-            broadcast(clients, 'bank', { questions: state.bank.questions.length, at: state.lastBankChange })
-          } catch (err) {
-            broadcast(clients, 'error', { message: `题库重载失败: ${err.message}` })
+          if (name === bankName) {
+            try {
+              state.bank = loadBank(state.bankPath)
+              state.lastBankChange = new Date().toISOString()
+              broadcast(clients, 'bank', { questions: state.bank.questions.length, at: state.lastBankChange })
+            } catch (err) {
+              broadcast(clients, 'error', { message: `题库重载失败: ${err.message}` })
+            }
+          } else if (name === graphName) {
+            if (Date.now() - (state.lastSelfGraphSave || 0) < 400) return
+            try {
+              state.graph = loadGraph(state.graphPath)
+              state.lastGraphChange = new Date().toISOString()
+              broadcast(clients, 'graph', { at: state.lastGraphChange })
+            } catch (err) {
+              broadcast(clients, 'error', { message: `图谱重载失败: ${err.message}` })
+            }
+          } else if (name === extraName) {
+            broadcast(clients, 'graph-extra', { at: new Date().toISOString() })
           }
         }, 150)
       }),
@@ -205,20 +248,16 @@ async function handle(req, res, state, clients) {
         topics: state.bank.topics,
         notesRoots: state.bank.notesRoots,
         questions: state.bank.questions,
+        graphTopics: (state.graph.topics || []).map((t) => ({ id: t.id, nodes: t.nodes.length, edges: t.edges.length })),
         langs: availableLangs(),
         serverTime: new Date().toISOString(),
       })
     }
     if (req.method === 'GET' && p === '/api/graph') {
-      const graphPath = path.join(path.dirname(state.bankPath), 'graph.json')
-      try {
-        return send(res, 200, fs.readFileSync(graphPath, 'utf8'), {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': 'no-store',
-        })
-      } catch {
-        return sendJson(res, 404, { error: 'graph.json 不存在，先运行 node scripts/gen-graph.mjs' })
+      if (!state.graph.topics.length) {
+        return sendJson(res, 404, { error: 'graph.json 为空，先运行 node scripts/gen-graph.mjs 或 easy2learn_graph regen' })
       }
+      return sendJson(res, 200, state.graph)
     }
     if (req.method === 'GET' && p === '/api/notes') return handleNotes(url, res, state)
     if (req.method === 'POST' && p === '/api/questions') {
@@ -266,6 +305,13 @@ function persist(state, clients) {
   state.lastBankChange = new Date().toISOString()
   state.lastSelfSave = Date.now()
   broadcast(clients, 'bank', { questions: state.bank.questions.length, at: state.lastBankChange })
+}
+
+function persistGraph(state, clients) {
+  saveGraph(state.graphPath, state.graph)
+  state.lastGraphChange = new Date().toISOString()
+  state.lastSelfGraphSave = Date.now()
+  broadcast(clients, 'graph', { at: state.lastGraphChange })
 }
 
 function handleSse(req, res, clients) {
