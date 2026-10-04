@@ -209,6 +209,17 @@ async function handle(req, res, state, clients) {
         serverTime: new Date().toISOString(),
       })
     }
+    if (req.method === 'GET' && p === '/api/graph') {
+      const graphPath = path.join(path.dirname(state.bankPath), 'graph.json')
+      try {
+        return send(res, 200, fs.readFileSync(graphPath, 'utf8'), {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
+        })
+      } catch {
+        return sendJson(res, 404, { error: 'graph.json 不存在，先运行 node scripts/gen-graph.mjs' })
+      }
+    }
     if (req.method === 'GET' && p === '/api/notes') return handleNotes(url, res, state)
     if (req.method === 'POST' && p === '/api/questions') {
       const q = validateQuestion(JSON.parse(await readBody(req)), state.bank)

@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>easy2learn · 知识学习</title>
+  <title>easy2learn · 知识图谱学习</title>
   <link rel="stylesheet" href="/style.css" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='24' font-size='24'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='24' font-size='24'%3E%F0%9F%95%B8%EF%B8%8F%3C/text%3E%3C/svg%3E" />
 </head>
 <body class="learn">
   <div id="app">
@@ -20,15 +20,29 @@
         <ul id="topic-list" class="topic-list"></ul>
       </section>
 
-      <section class="panel grow">
-        <h2>大纲 <span id="outline-progress" class="count"></span></h2>
-        <input id="outline-search" type="search" placeholder="🔍 搜索知识点…" autocomplete="off" />
-        <nav id="outline" class="outline"></nav>
+      <section class="panel">
+        <h2>查看方式</h2>
+        <div class="seg" id="view-toggle">
+          <button class="seg-btn active" data-view="graph">🕸 知识图谱</button>
+          <button class="seg-btn" data-view="slide">📑 滑动阅读</button>
+        </div>
+        <p class="hint" id="view-hint">点击节点 → 下方看知识点内容；拖拽平移，滚轮缩放</p>
+      </section>
+
+      <section class="panel">
+        <h2>图谱图例</h2>
+        <div id="legend" class="legend"></div>
+      </section>
+
+      <section class="panel">
+        <h2>学习进度</h2>
+        <div id="stats" class="stats"></div>
+        <button id="reset-progress" class="ghost small">重置进度</button>
       </section>
 
       <footer class="side-foot">
         <a class="ghost small btn-block" href="/">✍️ 去刷题</a>
-        <p class="hint">笔记被 agent 编辑时会自动刷新</p>
+        <p class="hint">agent 编辑笔记/前端时页面自动更新</p>
       </footer>
     </aside>
 
@@ -36,13 +50,39 @@
       <div id="topbar">
         <span id="crumb">加载中…</span>
         <span class="topbar-actions">
+          <button id="btn-fit" class="ghost small" title="缩放适配">⛶ 适配</button>
           <button id="btn-prev" class="ghost small">← 上一节</button>
-          <button id="btn-mark" class="ghost small">✓ 标记已学</button>
           <button id="btn-next" class="ghost small">下一节 →</button>
           <span id="live-badge" class="live hidden">● LIVE</span>
         </span>
       </div>
-      <div id="content"><p style="color:var(--muted)">加载中…</p></div>
+
+      <!-- 图谱模式 -->
+      <div id="view-graph" class="view">
+        <div id="graph-wrap"></div>
+        <div id="node-detail" class="hidden">
+          <header class="detail-head">
+            <div>
+              <span id="detail-chapter" class="badge type"></span>
+              <strong id="detail-title"></strong>
+            </div>
+            <div class="detail-actions">
+              <button id="btn-mark" class="ghost small">✓ 标记已学</button>
+              <button id="btn-detail-close" class="ghost small">✕ 收起</button>
+            </div>
+          </header>
+          <div id="detail-related" class="related"></div>
+          <article id="detail-body" class="md"></article>
+        </div>
+      </div>
+
+      <!-- 滑动阅读模式 -->
+      <div id="view-slide" class="view hidden">
+        <nav id="slide-toc" class="slide-toc"></nav>
+        <div id="slide-viewport" class="slide-viewport">
+          <div id="slide-track" class="slide-track"></div>
+        </div>
+      </div>
     </main>
   </div>
 

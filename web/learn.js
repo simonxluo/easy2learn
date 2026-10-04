@@ -1,21 +1,37 @@
-/* easy2learn 学习模式：本地笔记知识大纲 + 正文阅读 + 学习进度 + 实时刷新 */
-import { esc, extractOutline, renderMd } from './md.js'
+/* easy2learn 学习模式 v2：知识图谱（点选 → 下方看内容）+ 滑动阅读（目录 + 横向滑卡），两种方式可切换 */
+import { esc, renderMd } from './md.js'
+import { KGraph } from './kgraph.js'
 
 const $ = (sel) => document.querySelector(sel)
 
 const store = {
-  state: null,          // /api/state
-  notes: new Map(),     // topicId -> { text, outline }
+  graph: null,          // /api/graph
   topicId: null,
+  view: 'graph',        // graph | slide
+  selected: null,       // 当前知识点节点 id
+  slideIndex: 0,
   learned: loadLearned(),
-  activeId: null,
 }
 
 function loadLearned() {
   try { return JSON.parse(localStorage.getItem('e2l.learned') || '{}') } catch { return {} }
 }
 function saveLearned() { localStorage.setItem('e2l.learned', JSON.stringify(store.learned)) }
-function key(topicId, sectionId) { return `${topicId}::${sectionId}` }
+function key(nodeId) { return `${store.topicId}::${nodeId}` }
+function isLearned(nodeId) { return Boolean(store.learned[key(nodeId)]) }
+
+function topic() { return store.graph.topics.find((t) => t.id === store.topicId) }
+function nodes() { return topic()?.nodes || [] }
+function edges() { return topic()?.edges || [] }
+function nodeById(id) { return nodes().find((n) => n.id === id) }
+function neighborsOf(id) {
+  const out = new Set()
+  for (const e of edges()) {
+    if (e.s === id) out.add(e.t)
+    if (e.t === id) out.add(e.s)
+  }
+  return [...out]
+}
 
 async function fetchJson(url) {
   const res = await fetch(url)
@@ -25,187 +41,302 @@ async function fetchJson(url) {
 }
 
 async function boot() {
-  store.state = await fetchJson('/api/state')
-  const withNote = store.state.topics.filter((t) => t.note)
-  if (!withNote.length) throw new Error('题库 topics 没有关联笔记(note 字段)')
-  await Promise.all(withNote.map(loadTopicNote))
-  store.topicId = withNote[0].id
+  store.graph = await fetchJson('/api/graph')
+  if (!store.graph.topics?.length) throw new Error('graph.json 无 topics')
+  store.topicId = store.graph.topics[0].id
   bindStatic()
   renderSidebar()
-  renderContent()
+  initView()
   connectSse()
 }
 
-async function loadTopicNote(topic) {
-  const data = await fetchJson(`/api/notes?p=${encodeURIComponent(topic.note)}`)
-  store.notes.set(topic.id, { text: data.text, outline: extractOutline(data.text) })
+/* ================= 初始化与视图切换 ================= */
+let kg = null
+
+function initView() {
+  if (!kg) {
+    kg = new KGraph($('#graph-wrap'), {
+      onTap: (id) => {
+        if (id) selectNode(id)
+        else hideDetail()
+      },
+    })
+  }
+  applyView()
 }
 
-/* ---------- 渲染 ---------- */
+function applyView() {
+  const graph = store.view === 'graph'
+  $('#view-graph').classList.toggle('hidden', !graph)
+  $('#view-slide').classList.toggle('hidden', graph)
+  document.querySelectorAll('#view-toggle .seg-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.view === store.view)
+  })
+  $('#view-hint').textContent = graph
+    ? '点击节点 → 下方看知识点内容；拖拽平移，滚轮缩放'
+    : '← → 方向键或滑动切换知识卡；上方目录点击跳转'
+  $('#btn-prev').textContent = graph ? '← 上一节' : '← 上一张'
+  $('#btn-next').textContent = graph ? '下一节 →' : '下一张 →'
+  if (graph) {
+    refreshGraph()
+    if (store.selected) showDetail(store.selected)
+  } else {
+    renderSlideMode()
+  }
+  renderStats()
+}
+
+function refreshGraph() {
+  const t = topic()
+  kg.setData({
+    nodes: nodes().map((n) => ({ ...n, done: isLearned(n.id) })),
+    edges: edges(),
+    chapters: t.chapters,
+  })
+  kg.select(store.selected)
+  if (store.selected) kg.centerOn(store.selected)
+  else kg.fit()
+  renderLegend()
+}
+
+/* ================= 侧栏 ================= */
 function renderSidebar() {
-  const topics = store.state.topics.filter((t) => t.note)
-  $('#topic-list').innerHTML = topics
+  $('#topic-list').innerHTML = store.graph.topics
     .map((t) => {
-      const learnedCount = learnedOf(t.id)
-      const total = store.notes.get(t.id)?.outline.filter((o) => o.level === 3).length || 0
+      const done = t.nodes.filter((n) => isLearned(n.id)).length
       const active = store.topicId === t.id ? 'active' : ''
-      return `<li data-topic="${t.id}" class="${active}">
-        <span>${esc(t.name)}</span>
-        <span class="count">${learnedCount}/${total}</span>
-      </li>`
+      return `<li data-topic="${t.id}" class="${active}"><span>${esc(t.name)}</span><span class="count">${done}/${t.nodes.length}</span></li>`
     })
     .join('')
-  renderOutline()
+  renderStats()
 }
 
-function learnedOf(topicId) {
-  const prefix = `${topicId}::`
-  return Object.keys(store.learned).filter((k) => k.startsWith(prefix) && store.learned[k]).length
+function renderStats() {
+  const ns = nodes()
+  const done = ns.filter((n) => isLearned(n.id)).length
+  const pct = ns.length ? Math.round((done / ns.length) * 100) : 0
+  $('#stats').innerHTML =
+    `<div>已学 <b>${done}</b> / ${ns.length} 个知识点</div>` +
+    `<div class="bar"><i style="width:${pct}%"></i></div>`
 }
 
-function renderOutline() {
-  const note = store.notes.get(store.topicId)
-  const filter = $('#outline-search').value.trim().toLowerCase()
-  const items = (note?.outline || []).map((o) => {
-    if (filter && !o.text.toLowerCase().includes(filter)) return ''
-    const isH2 = o.level === 2
-    const active = store.activeId === o.id ? 'active' : ''
-    const done = store.learned[key(store.topicId, o.id)] ? 'done' : ''
-    if (isH2) {
-      return `<div class="ol-group ${filter ? '' : 'open'}" data-sec="${o.id}">
-        <span class="ol-toggle"></span><span class="ol-text">${esc(o.text)}</span>
-      </div>`
-    }
-    return `<a class="ol-item ${active} ${done}" data-sec="${o.id}" href="#${o.id}">
-      <span class="ol-check" data-check="${o.id}" title="标记已学">${store.learned[key(store.topicId, o.id)] ? '✓' : '○'}</span>
-      <span class="ol-text">${esc(o.text)}</span>
-    </a>`
+function renderLegend() {
+  const t = topic()
+  $('#legend').innerHTML = t.chapters
+    .map((c) => {
+      const color = kg.chapterColors.get(c.id) || '#8b93a3'
+      const total = nodes().filter((n) => n.chapter === c.id).length
+      const done = nodes().filter((n) => n.chapter === c.id && isLearned(n.id)).length
+      return `<div class="legend-item"><i style="background:${color}"></i>${esc(c.name)} <span class="count">${done}/${total}</span></div>`
+    })
+    .join('') + `<div class="legend-item hint">✓ = 已学 · 实线绿 = 关联 · 灰 = 下一问</div>`
+}
+
+/* ================= 图谱模式：详情面板 ================= */
+function selectNode(id) {
+  store.selected = id
+  kg.select(id)
+  kg.centerOn(id)
+  showDetail(id)
+}
+
+function showDetail(id) {
+  const n = nodeById(id)
+  if (!n) return
+  const chapterName = topic().chapters.find((c) => c.id === n.chapter)?.name || n.chapter
+  $('#detail-chapter').textContent = chapterName
+  $('#detail-title').textContent = n.label
+  const learned = isLearned(id)
+  $('#btn-mark').textContent = learned ? '✓ 已学' : '○ 标记已学'
+  $('#btn-mark').classList.toggle('on', learned)
+  const rels = neighborsOf(id)
+    .map((nid) => nodeById(nid))
+    .filter(Boolean)
+    .slice(0, 8)
+  $('#detail-related').innerHTML = rels.length
+    ? `<span class="hint">关联知识点：</span>` + rels.map((r) => `<button class="chip small" data-jump="${r.id}">${esc(r.label)}</button>`).join('')
+    : ''
+  $('#detail-body').innerHTML = renderMd(n.content)
+  $('#node-detail').classList.remove('hidden')
+  $('#node-detail').scrollTop = 0
+}
+
+function hideDetail() {
+  $('#node-detail').classList.add('hidden')
+}
+
+/* ================= 滑动阅读模式 ================= */
+function renderSlideMode() {
+  const t = topic()
+  const ns = nodes()
+  // 目录：章节分组的小 chip 条
+  const groups = t.chapters
+    .map((c) => {
+      const items = ns
+        .map((n, i) => ({ n, i }))
+        .filter(({ n }) => n.chapter === c.id)
+        .map(({ n, i }) => {
+          const active = i === store.slideIndex ? 'active' : ''
+          const done = isLearned(n.id) ? 'done' : ''
+          return `<button class="toc-item ${active} ${done}" data-goto="${i}">${esc(shortLabel(n.label))}</button>`
+        })
+        .join('')
+      return `<span class="toc-group">${esc(c.name)}</span>${items}`
+    })
+    .join('')
+  $('#slide-toc').innerHTML = groups
+
+  // 横向滑卡
+  $('#slide-track').innerHTML = ns
+    .map((n, i) => {
+      const chapterName = t.chapters.find((c) => c.id === n.chapter)?.name || ''
+      const learned = isLearned(n.id)
+      return `<article class="slide-card" data-index="${i}">
+        <header class="card-head">
+          <span class="badge type">${esc(chapterName)}</span>
+          <span class="badge">${i + 1}/${ns.length}</span>
+          <button class="sec-mark ${learned ? 'on' : ''}" data-mark="${n.id}">${learned ? '✓ 已学' : '○ 标记已学'}</button>
+        </header>
+        <h2>${esc(n.label)}</h2>
+        <div class="md card-body">${renderMd(n.content)}</div>
+      </article>`
+    })
+    .join('')
+
+  const viewport = $('#slide-viewport')
+  void viewport
+  scrollToCard(store.slideIndex, false)
+  updateTocActive()
+}
+
+function shortLabel(s) { return s.length > 10 ? `${s.slice(0, 9)}…` : s }
+
+function cardEls() { return [...document.querySelectorAll('.slide-card')] }
+
+function scrollToCard(index, smooth = true) {
+  const el = cardEls()[index]
+  if (!el) return
+  el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', inline: 'center', block: 'nearest' })
+}
+
+function onSlideScroll() {
+  const vp = $('#slide-viewport')
+  const vpCenter = vp.getBoundingClientRect().left + vp.clientWidth / 2
+  let best = 0, bestDist = Infinity
+  cardEls().forEach((el, i) => {
+    const mid = el.getBoundingClientRect().left + el.offsetWidth / 2
+    const d = Math.abs(mid - vpCenter)
+    if (d < bestDist) { bestDist = d; best = i }
   })
-  $('#outline').innerHTML = items.join('') || '<p class="hint">无匹配知识点</p>'
-
-  const total = (note?.outline || []).filter((o) => o.level === 3).length
-  const done = learnedOf(store.topicId)
-  $('#outline-progress').textContent = `${done}/${total}`
-}
-
-function renderContent() {
-  const topic = store.state.topics.find((t) => t.id === store.topicId)
-  const note = store.notes.get(store.topicId)
-  $('#crumb').textContent = `${topic?.name || ''} · 知识笔记`
-  const html = renderMd(note?.text || '')
-  $('#content').innerHTML = `<article class="learn-doc md">${html}</article>`
-  // 给渲染出的 h2/h3 依序注入 id（与 extractOutline 顺序一致）
-  const heads = [...document.querySelectorAll('#content h2, #content h3')]
-  const outline = note?.outline || []
-  let oi = 0
-  for (const h of heads) {
-    while (oi < outline.length && outline[oi].level !== Number(h.tagName[1])) oi++
-    if (oi >= outline.length) break
-    h.id = outline[oi].id
-    h.insertAdjacentHTML(
-      'beforeend',
-      `<button class="sec-mark ${store.learned[key(store.topicId, outline[oi].id)] ? 'on' : ''}" data-mark="${outline[oi].id}" title="标记已学">${store.learned[key(store.topicId, outline[oi].id)] ? '✓ 已学' : '○ 标记已学'}</button>`,
-    )
-    oi++
+  if (best !== store.slideIndex) {
+    store.slideIndex = best
+    updateTocActive()
   }
-  if (store.activeId) {
-    const el = document.getElementById(store.activeId)
-    if (el) requestAnimationFrame(() => el.scrollIntoView({ block: 'start' }))
-  } else $('#content').scrollTop = 0
 }
 
-/* ---------- 交互 ---------- */
+function updateTocActive() {
+  document.querySelectorAll('.toc-item').forEach((b) => {
+    b.classList.toggle('active', Number(b.dataset.goto) === store.slideIndex)
+  })
+  const cur = document.querySelector('.toc-item.active')
+  if (cur) cur.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+}
+
+/* ================= 交互绑定 ================= */
 function bindStatic() {
   $('#topic-list').addEventListener('click', (e) => {
     const li = e.target.closest('li[data-topic]')
     if (!li) return
     store.topicId = li.dataset.topic
-    store.activeId = null
+    store.selected = null
+    store.slideIndex = 0
+    hideDetail()
     renderSidebar()
-    renderContent()
+    applyView()
   })
-  $('#outline').addEventListener('click', (e) => {
-    const check = e.target.closest('.ol-check')
-    if (check) {
-      e.preventDefault()
-      toggleLearned(check.dataset.check)
-      return
-    }
-    const group = e.target.closest('.ol-group')
-    if (group && !e.target.closest('.ol-item')) {
-      let next = group.nextElementSibling
-      while (next && !next.classList.contains('ol-group')) {
-        next.classList.toggle('hidden')
-        next = next.nextElementSibling
-      }
-      group.classList.toggle('open')
-      return
-    }
-    const item = e.target.closest('.ol-item')
-    if (item) {
-      store.activeId = item.dataset.sec
-      renderOutline()
-      document.getElementById(store.activeId)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
-    }
+  $('#view-toggle').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-view]')
+    if (!b) return
+    store.view = b.dataset.view
+    applyView()
   })
-  $('#outline-search').addEventListener('input', renderOutline)
   $('#btn-mark').addEventListener('click', () => {
-    const cur = currentSection()
-    if (cur) toggleLearned(cur)
+    if (store.selected) toggleLearned(store.selected)
   })
-  $('#btn-prev').addEventListener('click', () => stepSection(-1))
-  $('#btn-next').addEventListener('click', () => stepSection(1))
-  $('#content').addEventListener('click', (e) => {
+  $('#btn-detail-close').addEventListener('click', hideDetail)
+  $('#btn-fit').addEventListener('click', () => kg && kg.fit())
+  $('#btn-prev').addEventListener('click', () => step(-1))
+  $('#btn-next').addEventListener('click', () => step(1))
+  $('#detail-related').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-jump]')
+    if (b) selectNode(b.dataset.jump)
+  })
+  $('#slide-toc').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-goto]')
+    if (!b) return
+    store.slideIndex = Number(b.dataset.goto)
+    scrollToCard(store.slideIndex)
+  })
+  $('#slide-track').addEventListener('click', (e) => {
     const mark = e.target.closest('[data-mark]')
     if (mark) toggleLearned(mark.dataset.mark)
   })
+  $('#slide-viewport').addEventListener('scroll', onSlideScroll, { passive: true })
+  $('#reset-progress').addEventListener('click', () => {
+    if (!confirm('清空全部学习进度？')) return
+    store.learned = {}
+    saveLearned()
+    refreshUI()
+  })
   document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
-    if (e.key === 'j' || e.key === 'ArrowDown') { e.preventDefault(); stepSection(1) }
-    if (e.key === 'k' || e.key === 'ArrowUp') { e.preventDefault(); stepSection(-1) }
+    if (e.key === 'ArrowRight') { e.preventDefault(); step(1) }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1) }
   })
 }
 
-function sections() {
-  return (store.notes.get(store.topicId)?.outline || []).filter((o) => o.level === 3)
-}
-
-function currentSection() {
-  const ss = sections()
-  if (!ss.length) return null
-  if (store.activeId && ss.some((s) => s.id === store.activeId)) return store.activeId
-  // 按滚动位置找当前节
-  for (const s of ss) {
-    const el = document.getElementById(s.id)
-    if (el && el.getBoundingClientRect().top > 120) return s.id
+function step(dir) {
+  const ns = nodes()
+  if (!ns.length) return
+  if (store.view === 'graph') {
+    // 图谱模式：沿节点顺序（=笔记阅读顺序）走
+    const idx = store.selected ? ns.findIndex((n) => n.id === store.selected) : -1
+    const next = ns[Math.min(ns.length - 1, Math.max(0, idx + dir))]
+    selectNode(next.id)
+  } else {
+    store.slideIndex = Math.min(ns.length - 1, Math.max(0, store.slideIndex + dir))
+    scrollToCard(store.slideIndex)
   }
-  return ss[ss.length - 1].id
 }
 
-function stepSection(dir) {
-  const ss = sections()
-  if (!ss.length) return
-  const idx = Math.max(0, ss.findIndex((s) => s.id === currentSection()))
-  const next = ss[Math.min(ss.length - 1, Math.max(0, idx + dir))]
-  store.activeId = next.id
-  renderOutline()
-  document.getElementById(next.id)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
-}
-
-function toggleLearned(sectionId) {
-  const k = key(store.topicId, sectionId)
+function toggleLearned(nodeId) {
+  const k = key(nodeId)
   store.learned[k] = !store.learned[k]
   saveLearned()
+  refreshUI()
+}
+
+function refreshUI() {
   renderSidebar()
-  // 更新正文里的标记按钮（不重渲染正文，避免跳滚动）
-  const btn = document.querySelector(`[data-mark="${sectionId}"]`)
-  if (btn) {
-    btn.classList.toggle('on', store.learned[k])
-    btn.textContent = store.learned[k] ? '✓ 已学' : '○ 标记已学'
+  renderLegend()
+  renderStats()
+  if (store.view === 'graph') {
+    refreshGraph()
+    if (store.selected) showDetail(store.selected)
+  } else {
+    document.querySelectorAll('.slide-card [data-mark]').forEach((btn) => {
+      const on = isLearned(btn.dataset.mark)
+      btn.classList.toggle('on', on)
+      btn.textContent = on ? '✓ 已学' : '○ 标记已学'
+    })
+    document.querySelectorAll('.toc-item').forEach((b) => {
+      const idx = Number(b.dataset.goto)
+      b.classList.toggle('done', isLearned(nodes()[idx]?.id))
+    })
   }
 }
 
-/* ---------- SSE 实时更新 ---------- */
+/* ================= SSE 实时更新 ================= */
 function connectSse() {
   const es = new EventSource('/api/events')
   es.addEventListener('hello', () => {
@@ -213,11 +344,13 @@ function connectSse() {
     $('#live-badge').classList.remove('hidden')
   })
   es.addEventListener('notes', async () => {
-    // 本地笔记被 agent 编辑 → 重拉当前科目并重渲染
-    const topic = store.state.topics.find((t) => t.id === store.topicId)
-    if (topic) await loadTopicNote(topic)
+    const prevTopic = store.topicId
+    store.graph = await fetchJson('/api/graph')
+    store.topicId = store.graph.topics.some((t) => t.id === prevTopic) ? prevTopic : store.graph.topics[0].id
+    if (store.selected && !nodeById(store.selected)) store.selected = null
+    if (store.slideIndex >= nodes().length) store.slideIndex = 0
     renderSidebar()
-    renderContent()
+    applyView()
   })
   es.addEventListener('reload', () => location.reload())
   es.onerror = () => {
@@ -227,5 +360,5 @@ function connectSse() {
 }
 
 boot().catch((err) => {
-  $('#content').innerHTML = `<div class="empty"><div class="big">💥</div><p>加载失败: ${esc(err.message)}</p></div>`
+  $('#graph-wrap').innerHTML = `<div class="empty"><div class="big">💥</div><p>加载失败: ${esc(err.message)}</p></div>`
 })
