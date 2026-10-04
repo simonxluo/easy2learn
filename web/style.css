@@ -241,17 +241,17 @@ a.ghost { display: inline-block; }
 #detail-body { max-width: 860px; }
 #detail-body h3 { margin-top: 4px; }
 
-/* 滑动阅读模式：左竖目录 + 右横滑卡 */
+/* 滑动阅读模式：经典双栏文档阅读器——左目录（固定 20 条高、竖滚），右内容（上下滚动阅读） */
 #view-slide { display: flex; flex-direction: row; flex: 1; min-height: 0; }
 .slide-toc {
   display: flex; flex-direction: column; align-items: stretch; gap: 2px;
-  width: 210px; flex-shrink: 0;   /* 固定宽度，不随窗口挤压 */
-  height: 100%;                    /* 固定高度 = 滑动区等高 */
+  width: 224px; flex-shrink: 0;
+  height: 100%; max-height: 670px; /* ≈ 20 条目录的高度：再多就出竖向滚动条 */
   overflow-y: auto; overscroll-behavior: contain;
   scroll-behavior: smooth;
   padding: 8px 7px 16px;
   border-right: 1px solid var(--border); background: var(--bg2);
-  scrollbar-width: thin;
+  scrollbar-width: thin; scrollbar-color: #46506480 transparent;
 }
 /* 关键：条目不允许被 flex 压扁（否则内容多时每项被挤窄而不是出滚动条） */
 .toc-group, .toc-item { flex-shrink: 0; }
@@ -272,57 +272,30 @@ a.ghost { display: inline-block; }
 .toc-item.active.done::before { color: #fff; }
 @media (max-width: 900px) { .slide-toc { width: 158px; } }
 
-/* 右侧：内容视口 + 底部拖动条 上下两段 */
+/* 右侧：内容纵向阅读窗 */
 .slide-right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-
-/* 可拖动的卡片定位条 */
-.slide-seek {
-  flex-shrink: 0; display: flex; align-items: center; gap: 12px;
-  padding: 6px 18px 10px; border-top: 1px solid var(--border); background: var(--bg2);
-  user-select: none; touch-action: none;
+.slide-viewport {
+  flex: 1; position: relative; /* 成为卡片的 offsetParent，offsetTop 即内容坐标，scrollTo 才能对准 */
+  overflow-y: auto; overflow-x: hidden;
+  scroll-snap-type: y proximity; /* 轻吸附：短卡对齐顶部，长文自由滚 */
+  overscroll-behavior: contain;
 }
-.seek-track { position: relative; flex: 1; height: 22px; cursor: pointer; }
-.seek-track::before {
-  content: ""; position: absolute; left: 0; right: 0; top: 9px; height: 4px;
-  border-radius: 999px; background: var(--bg3); border: 1px solid var(--border);
+.slide-track { padding: 20px 28px 60px; width: 100%; }
+.slide-card {
+  scroll-snap-align: start;
+  width: 100%; max-width: 880px; margin: 0 auto 18px;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 20px 26px;
 }
-.seek-thumb {
-  position: absolute; top: 3px; width: 14px; height: 16px; margin-left: -7px;
-  border-radius: 4px; background: var(--accent); border: 1px solid rgba(255,255,255,0.25);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.4); cursor: grab; transition: transform .1s;
-}
-.seek-thumb:active, .seek-thumb.dragging { cursor: grabbing; transform: scaleY(1.15); }
-.seek-track:hover .seek-thumb { box-shadow: 0 0 0 4px rgba(91,140,255,0.18); }
-.seek-label { font-size: 12px; color: var(--muted); min-width: 52px; text-align: right; font-variant-numeric: tabular-nums; }
 
 /* 常显可拖滚动条（macOS 悬浮条不动时隐形，这里强制可见可拉） */
-.slide-toc, .slide-card, .slide-viewport { scrollbar-width: thin; scrollbar-color: #46506480 transparent; }
-.slide-toc::-webkit-scrollbar, .slide-card::-webkit-scrollbar { width: 9px; }
-.slide-viewport::-webkit-scrollbar { height: 9px; }
-.slide-toc::-webkit-scrollbar-track, .slide-card::-webkit-scrollbar-track, .slide-viewport::-webkit-scrollbar-track { background: transparent; }
-.slide-toc::-webkit-scrollbar-thumb, .slide-card::-webkit-scrollbar-thumb, .slide-viewport::-webkit-scrollbar-thumb {
+.slide-toc::-webkit-scrollbar, .slide-viewport::-webkit-scrollbar { width: 10px; }
+.slide-toc::-webkit-scrollbar-track, .slide-viewport::-webkit-scrollbar-track { background: transparent; }
+.slide-toc::-webkit-scrollbar-thumb, .slide-viewport::-webkit-scrollbar-thumb {
   background: #465064; border-radius: 999px; border: 2px solid var(--bg2);
 }
-.slide-toc::-webkit-scrollbar-thumb:hover, .slide-card::-webkit-scrollbar-thumb:hover, .slide-viewport::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+.slide-toc::-webkit-scrollbar-thumb:hover, .slide-viewport::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
-.slide-viewport {
-  flex: 1; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory;
-  container-type: inline-size; /* 卡片宽度按可视宽度计，扣除目录后不溢出 */
-  overscroll-behavior-x: contain; /* 与左目录垂直滚动彻底解耦：滚到头不外溢 */
-}
-.slide-track {
-  display: flex; gap: 18px; padding: 22px 32px; height: 100%;
-  align-items: center;  /* 卡片高度随内容自适应并垂直居中，不再被窗口拉伸出大片空白 */
-  width: max-content;
-}
-.slide-card {
-  scroll-snap-align: center; width: min(760px, 82vw); flex-shrink: 0;
-  width: min(760px, 88cqw); /* 支持 cqw 的浏览器按滑动区实际宽度算 */
-  height: auto; max-height: 100%; min-height: 220px; /* 短卡不空旷、长卡内部滚 */
-  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 20px 26px; overflow-y: auto; overscroll-behavior: contain;
-  scrollbar-width: thin;
-}
 .card-head { display: flex; gap: 8px; align-items: center; }
 .card-head .badge { margin-right: auto; }
 .card-head .badge.kind { margin-right: 0; }

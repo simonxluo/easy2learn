@@ -86,7 +86,7 @@ function applyView() {
   })
   $('#view-hint').textContent = graph
     ? '点击节点 → 下方看知识点内容；拖拽平移，滚轮/双指捏合缩放，右上 ⤢ 复位'
-    : '← → 方向键或横向滑动切卡；左侧竖排目录点击跳转'
+    : '左侧目录点击跳转（超出 20 条可上下滚）；右侧内容上下滚动阅读，←/→ 逐条切换'
   $('#btn-prev').textContent = graph ? '← 上一节' : '← 上一张'
   $('#btn-next').textContent = graph ? '下一节 →' : '下一张 →'
   if (graph) {
@@ -248,7 +248,6 @@ function renderSlideMode() {
 
   scrollToCard(store.slideIndex, false)
   updateTocActive()
-  updateSeek()
 }
 
 function shortLabel(s) { return s.length > 10 ? `${s.slice(0, 9)}…` : s }
@@ -258,48 +257,28 @@ function cardEls() { return [...document.querySelectorAll('.slide-card')] }
 function scrollToCard(index, smooth = true) {
   const el = cardEls()[index]
   if (!el) return
-  el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', inline: 'center', block: 'nearest' })
+  // 纵向文档阅读：滚动到该知识卡顶部（留一点呼吸空间）
+  ;($('#slide-viewport')).scrollTo({ top: el.offsetTop - 12, behavior: smooth ? 'smooth' : 'auto' })
   renderCrumb()
-  // 直接同步目录高亮与进度条，不依赖 scroll 事件追平（平滑动画中事件有延迟，
+  // 直接同步目录高亮，不依赖 scroll 事件追平（平滑动画中事件有延迟，
   // 某些环境甚至不派发——高亮状态必须由这次操作自己决定）
   updateTocActive()
-  updateSeek()
 }
 
+/** 纵向滚动侦测（scroll-spy）：当前读到的知识卡 = 视口顶部附近的那张 */
 function onSlideScroll() {
   const vp = $('#slide-viewport')
-  const vpCenter = vp.getBoundingClientRect().left + vp.clientWidth / 2
+  const probe = vp.scrollTop + 90 // 顶部往下一点作为「正在读」的判定位
   let best = 0, bestDist = Infinity
   cardEls().forEach((el, i) => {
-    const mid = el.getBoundingClientRect().left + el.offsetWidth / 2
-    const d = Math.abs(mid - vpCenter)
+    const d = Math.abs(el.offsetTop - probe)
     if (d < bestDist) { bestDist = d; best = i }
   })
   if (best !== store.slideIndex) {
     store.slideIndex = best
     updateTocActive()
     renderCrumb()
-    updateSeek()
   }
-}
-
-/* ================= 底部拖动进度条 ================= */
-function updateSeek() {
-  const us = units()
-  const thumb = $('#seek-thumb'), label = $('#seek-label')
-  if (!thumb || !us.length) return
-  thumb.style.left = `${((store.slideIndex + 0.5) / us.length) * 100}%`
-  label.textContent = `${store.slideIndex + 1}/${us.length}`
-}
-
-function seekFromEvent(e) {
-  const track = $('#seek-track')
-  const r = track.getBoundingClientRect()
-  const frac = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width))
-  const n = units().length
-  if (!n) return
-  store.slideIndex = Math.min(n - 1, Math.max(0, Math.floor(frac * n)))
-  scrollToCard(store.slideIndex, false) // 拖动用瞬时滚动，跟手
 }
 
 function updateTocActive() {
@@ -307,7 +286,7 @@ function updateTocActive() {
     b.classList.toggle('active', Number(b.dataset.goto) === store.slideIndex)
   })
   const cur = document.querySelector('.toc-item.active')
-  // 目录是竖排侧栏：block:'nearest' 让当前项在目录里纵向滚入视野
+  // 目录是竖排侧栏（固定高度内部滚动）：当前项纵向滚入视野
   if (cur) cur.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
 }
 
@@ -352,23 +331,6 @@ function bindStatic() {
     if (mark) toggleLearned(mark.dataset.mark)
   })
   $('#slide-viewport').addEventListener('scroll', onSlideScroll, { passive: true })
-  // 底部拖动条：按下/拖动/点击 快速定位卡片
-  const seekTrack = $('#seek-track')
-  let seeking = false
-  seekTrack.addEventListener('pointerdown', (e) => {
-    seeking = true
-    seekTrack.setPointerCapture(e.pointerId)
-    $('#seek-thumb').classList.add('dragging')
-    seekFromEvent(e)
-  })
-  seekTrack.addEventListener('pointermove', (e) => { if (seeking) seekFromEvent(e) })
-  const endSeek = () => {
-    if (!seeking) return
-    seeking = false
-    $('#seek-thumb').classList.remove('dragging')
-  }
-  seekTrack.addEventListener('pointerup', endSeek)
-  seekTrack.addEventListener('pointercancel', endSeek)
   $('#reset-progress').addEventListener('click', () => {
     if (!confirm('清空全部学习进度？')) return
     store.learned = {}
