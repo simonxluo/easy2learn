@@ -6,13 +6,14 @@ import { fileURLToPath } from 'node:url'
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const bank = {
-  meta: { name: '面经题库（OS + C++ + UE + LLM + 米哈游）', version: 1 },
+  meta: { name: '面经题库（OS + C++ + UE + LLM + 米哈游 + AI Infra）', version: 1 },
   topics: [
     { id: 'os', name: '操作系统', note: 'interview-prep/os/操作系统.md' },
     { id: 'cpp', name: 'C++', note: 'interview-prep/language/编程语言.md' },
     { id: 'ue', name: 'UE与游戏工具', note: 'interview-prep/ue/UE与游戏工具.md' },
     { id: 'ai', name: 'LLM应用工程', note: 'interview-prep/ai/LLM应用工程.md' },
     { id: 'mihoyo', name: '米哈游AI工具岗', note: 'interview-prep/mihoyo/米哈游AI工具岗.md' },
+    { id: 'aiinfra', name: 'AI Infra', note: 'interview-prep/aiinfra/AI-Infra.md' },
   ],
   notesRoots: ['interview-prep'],
   questions: [
@@ -561,6 +562,24 @@ const bank = {
     {type: "qa",topic: "mihoyo",difficulty: 3,tags: ["设计题"],stem: "LLM 生成的 UE 配置/蓝图片段，怎么保证不会把项目搞崩？（答题要点）",answer: "原则：LLM 产物永远当不可信输入。四道闸门：① 沙箱——先进隔离工作区/临时资产，预览用只读副本；② 校验——schema/类型 → 编译（蓝图可编译）→ 规则/命名/依赖检查；③ 回滚——改动走版本控制原子提交，可整体 revert，diff 人工比对；④ 权限——目录级授权 + 破坏性操作二次确认/审批。附加：全程审计日志、生成物打标、灰度先只读建议模式。"},
     {type: "single",topic: "cpp",difficulty: 3,tags: ["内存","new"],stem: "关于 placement new，下列说法正确的是？",options: ["它会自动分配堆内存","它在给定地址上构造对象，不分配内存，需要手动调析构","它只能用于 POD 类型","它是 malloc 的别名"],answer: 1,analysis: "new = operator new(分配) + 构造；placement new 跳过分配，在给定内存上构造，生命周期自己管（手动 p->~T()）。内存池/容器原地搬移/共享内存常用。",knowledge: "- new T(args) 两步：operator new + 构造\n- placement new：new (ptr) T(args)；配 p->~T()\n- 场景：内存池、扩容搬移、共享内存"},
     {type: "judge",topic: "cpp",difficulty: 3,tags: ["STL","string"],stem: "std::string 的 SSO 优化意味着短字符串也会在堆上分配内存。",answer: false,analysis: "SSO（短字符串优化）恰好相反：短串直接存在对象内部的栈缓冲区，零堆分配；长串才走指针+堆。libstdc++ 约 15 字节、libc++ 约 22 字节。",knowledge: "- 短串存自身（栈缓冲），长串才上堆\n- 收益：零分配、缓存友好；代价 sizeof(string) 变大"},
+    /* ================= OS/C++ 网络面经补缺 + AI Infra ================= */
+    {type: "single",topic: "os",difficulty: 2,tags: ["进程"],stem: "关于进程状态转换，下列说法正确的是？",options: ["阻塞态可以直接转换为运行态","运行态阻塞是被动行为","阻塞态等事件到达后转为就绪态，不会直接回运行态","就绪态可以直接转为阻塞态"],answer: 2,analysis: "阻塞→就绪（事件到达）→ 等调度 → 运行。运行→阻塞是进程主动等 IO/锁。",knowledge: "五态：创建/就绪/运行/阻塞/终止\n阻塞是主动等事件；醒来先进就绪队"},
+    {type: "single",topic: "os",difficulty: 3,tags: ["调度"],stem: "Linux CFS（完全公平调度）的核心思想是？",options: ["优先级越高时间片越大","总是运行 vruntime（虚拟运行时间）最小的任务","短任务优先执行","多级反馈队列逐级降级"],answer: 1,analysis: "CFS 按 nice 权重归一化虚拟运行时间，红黑树组织，总挑 vruntime 最小者；追求理想公平 CPU 的平滑近似。",knowledge: "vruntime 按权重归一（nice 每级约 1.25 倍）\n红黑树 O(log n) 挑最小"},
+    {type: "single",topic: "os",difficulty: 3,tags: ["fork","COW"],stem: "fork 后父子进程的内存关系，正确的是？",options: ["fork 时完整复制父进程物理内存","父子共享物理页且标为只读，任一方写时按页复制（COW）","子进程内存独立且可写，父进程只读","父子共享同一页表"],answer: 1,analysis: "fork 拷页表不拷内存；页标只读，写时缺页异常触发按页复制——写时复制 COW。",knowledge: "fork 一次调用两次返回（父得 PID 子得 0）\nvfork 共享地址空间，现代被 CFW+posix_spawn 取代"},
+    {type: "judge",topic: "os",difficulty: 2,tags: ["进程"],stem: "孤儿进程是指父进程先退出、子进程被 init/systemd 收养的进程，它本身不是需要修复的问题。",answer: true,analysis: "孤儿会被 PID 1 收养并正常回收；真正的问题状态是僵尸进程（已退出但父进程未 wait 回收）。",knowledge: "僵尸：父进程不 wait → 内核保留退出状态占 PID\n守护进程：setsid 脱离终端后台运行"},
+    {type: "single",topic: "os",difficulty: 4,tags: ["并发","缓存"],stem: "两个线程分别频繁写各自独立的变量，性能反而随线程数下降，最可能的原因是？",options: ["内存泄漏","伪共享：两变量落在同一条 cache line 导致 MESI 乒乓失效","页错误过多","上下文切换开销"],answer: 1,analysis: "不同变量但同一 64B cache line → 每次写让对方核该行失效。解决：alignas(64)/padding 隔离。",knowledge: "MESI 以 cache line（64B）为单位\n排查 perf c2c；解法对齐隔离"},
+    {type: "qa",topic: "os",difficulty: 3,tags: ["条件变量"],stem: "条件变量为什么必须配合 mutex 使用？什么是虚假唤醒？",answer: "不持锁时「检查条件→入睡」之间存在窗口：另一线程可能在这之间改条件并 notify，通知落在入睡之前 → 永远错过（丢失唤醒）。mutex 把检查与入睡变成原子。虚假唤醒：实现层面（futex 重启等）可能无人 notify 也醒，所以必须用谓词/while 循环重查条件，醒来≠条件成立。"},
+    {type: "single",topic: "cpp",difficulty: 2,tags: ["类型转换"],stem: "下列关于四种 cast 的说法，正确的是？",options: ["static_cast 会做运行时类型检查","dynamic_cast 用于多态类型的下行转换，失败时指针返回 nullptr","const_cast 可以安全修改任何 const 对象的值","reinterpret_cast 是最安全的转换"],answer: 1,analysis: "dynamic_cast 走 RTTI（要求类有虚函数），引用版失败抛 bad_cast。const_cast 改「本就 const」的对象是 UB；reinterpret_cast 位重解释最危险。",knowledge: "数值 static / 下行 dynamic / 去 const 少用 / 重解释慎用\nC 风格 cast 禁用（不写明意图）"},
+    {type: "single",topic: "cpp",difficulty: 4,tags: ["并发","atomic"],stem: "关于 std::atomic 与内存序，下列说法正确的是？",options: ["atomic 变量默认是 relaxed 语义","release 写与 acquire 读配对可建立跨线程的可见性（同步关系）","atomic 可以像 mutex 一样保护多个变量构成的不变式","relaxed 提供完整的顺序保证"],answer: 1,analysis: "默认 seq_cst；release-acquire 配对形成 happens-before，配对点之前的写入对消费者可见。atomic 只保护单个变量，多变量一致性要 mutex。relaxed 只保证原子性不管顺序。",knowledge: "发布/订阅：生产者 store(release)，消费者 load(acquire)\n计数器用 relaxed 即可"},
+    {type: "judge",topic: "cpp",difficulty: 3,tags: ["STL","hash"],stem: "unordered_map 的 bucket 数量通常取素数，且负载因子超限时通过 rehash 重新散列，期间迭代器全部失效。",answer: true,analysis: "拉链法哈希表；size > bucket_count × max_load_factor(默认1.0) 时 rehash（桶数取不小于两倍的素数），迭代器失效但引用/指针不失效。",knowledge: "reserve(n) 一次到位避免多次 rehash\noperator[] 不存在会默认插入，at() 抛异常"},
+    {type: "qa",topic: "cpp",difficulty: 3,tags: ["协程"],stem: "C++20 协程的 co_await 大致是怎么工作的？为什么说它是无栈协程？",answer: "函数含 co_await/co_yield/co_return 即协程：编译器把局部状态装箱到堆上的帧，挂起时把控制权交还调用者，之后从暂停点恢复。co_await 按 awaiter 三件套工作：await_ready（可免挂起）→ await_suspend（挂起交还控制）→ await_resume（恢复取结果）。无栈：只能在显式 co_await 标记点挂起（对比 goroutine 有栈可任意深度挂起），帧更小但要把暂停点写明。"},
+    {type: "single",topic: "aiinfra",difficulty: 2,tags: ["GPU"],stem: "GPU 相对 CPU 的设计取向是？",options: ["延迟导向：大缓存+乱序执行尽快完成单任务","吞吐导向：海量小核+高带宽显存，靠并行度隐藏延迟","专注低功耗单线程性能","主要靠超大三级缓存加速"],answer: 1,analysis: "CPU 延迟导向（分支预测/大缓存/乱序），GPU 吞吐导向（数千小核 SIMT + HBM 带宽），深度学习的稠密矩阵正中其下怀。",knowledge: "训练慢的归因层次：SM 占用率 / 显存带宽 / PCIe 传输 / kernel 间空隙"},
+    {type: "single",topic: "aiinfra",difficulty: 3,tags: ["CUDA"],stem: "Warp 分化（branch divergence）伤性能的原因是？",options: ["寄存器数量不够","同一 warp 的 32 线程走不同分支时硬件只能串行执行各路径","共享内存 bank 冲突","显存带宽不足"],answer: 1,analysis: "Warp 是调度最小单位（32 线程同指令）；if/else 分歧 → 路径串行执行、不走的 lanes 空转。优化：按 warp 对齐拆数据、算术掩码替代分支。",knowledge: "SM 是车间，Warp 是最小流水班\n循环边界不对齐也算分歧"},
+    {type: "single",topic: "aiinfra",difficulty: 3,tags: ["LLM推理"],stem: "LLM 推理的 Decode 阶段，性能瓶颈通常是？",options: ["Tensor Core 算力不足","显存带宽：每步都要读全部权重和 KV Cache","PCIe 传输","CPU 调度"],answer: 1,analysis: "Decode 每步只算一个 token（GEMV 形态），算力需求低但每 token 都要过一遍权重+KV → 访存 bound。Prefill 才是算力密集（GEMM）。TTFT 看 Prefill，TPOT 看 Decode。",knowledge: "Prefill 吃算力，Decode 吃带宽\n优化：batching 拼请求、量化压 KV、GQA/MQA"},
+    {type: "single",topic: "aiinfra",difficulty: 4,tags: ["KVCache"],stem: "PagedAttention（vLLM）主要解决的问题是？",options: ["注意力计算太慢","KV Cache 按最大长度预留连续显存导致碎片、利用率低","模型权重太大","kernel launch 开销"],answer: 1,analysis: "借 OS 分页思想：KV 切固定块、逻辑连续物理离散、按需分配+前缀共享（copy-on-write），碎片近乎消灭 → 同显存 batch 更大、吞吐数倍。",knowledge: "与 continuous batching 互补：一个管显存一个管调度\n块表管理有开销，超长单序列仍是瓶颈"},
+    {type: "single",topic: "aiinfra",difficulty: 4,tags: ["注意力"],stem: "FlashAttention 加速的核心手段是？",options: ["把注意力近似为稀疏计算","分块+在线 softmax，中间 N×N 矩阵不落 HBM，显存访问从 O(N²) 降到 O(N)","用 INT4 量化权重","多卡并行切序列"],answer: 1,analysis: "标准注意力的瓶颈是 IO：softmax 中间矩阵写回 HBM 再读。FlashAttention 分块流式计算+running max/sum 增量归一，数值精确等价。",knowledge: "IO-aware 精确注意力；Q 块驻留 SRAM，K/V 分块流过\nFA2/3 改并行切分与 Hopper 异步"},
+    {type: "judge",topic: "aiinfra",difficulty: 3,tags: ["serving"],stem: "Continuous Batching 通过让短序列等待同 batch 最长序列一起返回来提高吞吐。",answer: false,analysis: "恰好相反：静态批处理才是「陪跑到最长」。Continuous Batching 做迭代级调度——完成的请求立即出队返回、新请求随时插队，GPU 始终满载。",knowledge: "vLLM = PagedAttention（显存）+ continuous batching（调度）\n抢占：RECOMPUTE vs SWAP 两种代价模型"},
+    {type: "qa",topic: "aiinfra",difficulty: 3,tags: ["量化"],stem: "GPTQ / AWQ / GGUF 三大量化路线怎么区分？",answer: "GPTQ：训练后逐层量化，用二阶（Hessian）信息最小化重构误差，对离群值大的层稳，偏 GPU 服务端。AWQ：发现保护约 1% 显著权重通道即可保精度——按激活分布做逐通道缩放再量化，推理快、服务端主流。GGUF：llama.cpp 生态容器格式，K-quant 混合位宽分块量化，CPU/端侧友好。经验：INT4 对常规任务掉点小，长链推理/代码/数学掉点放大，必须拿业务评测集回归；KV Cache 量化（FP8/INT8）是独立战线；QLoRA = 4bit 底座 + LoRA 微调。"},
   ],
 }
 

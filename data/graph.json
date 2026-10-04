@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-10-04T09:44:41.888Z",
+  "generatedAt": "2026-10-04T09:58:45.963Z",
   "engine": "builtin-force",
   "topics": [
     {
@@ -70,6 +70,34 @@
           "content": "**A:**\n- 协程是**用户态**的轻量级执行单元，切换由程序（运行时/库）控制，不经过内核\n- 切换成本：只保存/恢复少量寄存器，纳秒级（线程切换要陷入内核，微秒级）\n- 协程是**协作式调度**（主动 yield），线程是**抢占式调度**\n- 一个线程可以跑成千上万个协程；协程阻塞在系统调用上会卡住整个线程\n- 典型：Go goroutine（有 GMP 调度器，结合了内核线程）、C++20 coroutine、Python asyncio\n\n> 🔑 记忆口诀：「协程用户态切换，线程内核态调度」\n> ⚠️ 常见追问：goroutine 和线程的区别？协程适合什么场景（高并发 IO）？\n\n---"
         },
         {
+          "id": "os:进程有哪些状态-五态模型怎么转换",
+          "chapter": "进程与线程",
+          "label": "进程有哪些状态？五态模型怎么转换？",
+          "kind": "qa",
+          "content": "**A:**\n- 五态：**创建 → 就绪 → 运行 → 阻塞（等待）→ 终止**\n- 转换：就绪→运行（被调度）；运行→就绪（时间片到/被抢占）；运行→阻塞（等 IO/锁/睡眠，**主动行为**）；阻塞→就绪（事件到达，**不会直接回运行**）\n- Linux 对应：TASK_RUNNING（含就绪）/ TASK_INTERRUPTIBLE（可中断睡眠）/ TASK_UNINTERRUPTIBLE（不可中断，常是等磁盘/NFS，杀不掉的 D 状态）/ TASK_STOPPED / EXIT_ZOMBIE\n- 七态模型加了「挂起」：内存不足换出到交换区（就绪挂起/阻塞挂起）\n\n> 🔑 记忆口诀：「阻塞是主动等事件，醒来先进就绪队」\n> ⚠️ 常见追问：D 状态进程 kill 不掉怎么办？（不可中断睡眠多与 IO/NFS 相关，只能等底层 IO 完成；ps 里 STAT 为 D）\n\n---"
+        },
+        {
+          "id": "os:进程调度算法有哪些-linux-用什么",
+          "chapter": "进程与线程",
+          "label": "进程调度算法有哪些？Linux 用什么？",
+          "kind": "qa",
+          "content": "**A:**\n- 经典：FCFS（先来先服务，convoy effect 短任务被长任务拖死）、SJF（最短优先，平均等待最优但饿死长任务）、时间片轮转 RR、优先级调度（低优先级饥饿→老化 aging）、多级反馈队列 MLFQ（新任务高优先级小时间片，用满降级）\n- **Linux CFS（完全公平调度）**：每任务记 vruntime（虚拟运行时间，按 nice 权重归一），**总挑 vruntime 最小的跑**（红黑树组织 O(log n)）；追求「理想多任务 CPU 的平滑近似」；新内核（6.6+）转向 EEVDF\n- 交互任务怕延迟、批处理怕吞吐，CFS 用权重 + 最小粒度在两者间平衡\n\n> 🔑 记忆口诀：「CFS 比的是虚拟年龄，谁欠 CPU 谁先跑」\n> ⚠️ 常见追问：nice 值怎么影响？（每级约 1.25 倍权重，-20 最高 19 最低）\n\n---"
+        },
+        {
+          "id": "os:fork-的过程-写时复制-cow-是怎么工作的",
+          "chapter": "进程与线程",
+          "label": "fork 的过程？写时复制 (COW) 是怎么工作的？",
+          "kind": "qa",
+          "content": "**A:**\n- `fork()` 一次调用两次返回：**父进程返回子进程 PID，子进程返回 0**，失败 -1；内核复制进程描述符、页表等，**不立刻复制物理内存**\n- **COW**：父子页表指向同一批物理页且都标**只读**；任一方写触发缺页异常 → 内核识别 COW 页 → **按页复制** → 改回可写\n- 收益：fork 后常紧跟 exec（大部分页不用复制）；`vfork` 更激进（共享地址空间，现代被 COW + posix_spawn 取代）\n- 追问延伸：fork 后文件描述符？（dup 语义：共享同一打开文件描述 → 共享文件偏移量）\n\n> 🔑 记忆口诀：「fork 拷页表不拷内存，谁写谁复制那一页」\n> ⚠️ 常见追问：多线程进程 fork 安全吗？（只复制当前线程，其他线程持有的锁永不释放 → 死锁风险；子进程在 exec 前只做 async-signal-safe 操作）\n\n---"
+        },
+        {
+          "id": "os:僵尸进程-/-孤儿进程-/-守护进程",
+          "chapter": "进程与线程",
+          "label": "僵尸进程 / 孤儿进程 / 守护进程？",
+          "kind": "qa",
+          "content": "**A:**\n- **僵尸 (zombie)**：子进程已退出但父进程没 `wait()` → 内核保留退出状态（PID/退出码）占表项；大量僵尸耗尽 PID。解决：父进程 wait/waitpid；或杀父让 init 收养回收；`signal(SIGCHLD, SIG_IGN)` 让内核自动回收\n- **孤儿 (orphan)**：父进程先死 → 子进程被 **init/systemd（PID 1）收养**，退出由收养者回收——不是问题状态\n- **守护进程 (daemon)**：脱离终端、后台长期运行；创建套路：fork 父退出 → 子 `setsid()` 建新会话 → 再 fork 防重获终端 → chdir(\"/\")、重设 umask、关闭/重定向 0/1/2\n- systemd 时代多用 service unit 托管，原理仍是会话/进程组分离\n\n> 🔑 记忆口诀：「僵尸是没被收尸的退出状态，孤儿有人收养，守护自己开会话」\n> ⚠️ 常见追问：怎么找出僵尸？（`ps -eo stat,pid | grep '^Z'`）\n\n---"
+        },
+        {
           "id": "os:虚拟内存的作用与原理",
           "chapter": "内存管理",
           "label": "虚拟内存的作用与原理？",
@@ -119,6 +147,20 @@
           "content": "**A:**\n- **原因**：\n  1. 硬件要求：CPU 按字长（如 8 字节）访问内存，未对齐可能需两次访存甚至报错\n  2. Cache line（64B）对齐可避免缓存行跨裂\n  3. 原子操作通常要求对齐\n- **规则**（以结构体为例）：\n  1. 每个成员的偏移量必须是「自身大小与编译器对齐系数中较小者」的整数倍\n  2. 结构体总大小必须是「最大成员对齐值」的整数倍\n- 用 `#pragma pack(n)` 或 `alignas` 控制；调整成员顺序（大成员在前）可减小体积\n\n> 🔑 记忆口诀：「成员对齐自身大小，整体补齐最大对齐」\n> ⚠️ 常见追问：写一个含 char/int/double 的 struct 算 sizeof？（经典手算题）\n\n---"
         },
         {
+          "id": "os:用户态和内核态-系统调用的成本在哪",
+          "chapter": "内存管理",
+          "label": "用户态和内核态？系统调用的成本在哪？",
+          "kind": "qa",
+          "content": "**A:**\n- CPU 分特权级（x86 ring0/ring3，ARM EL0/EL1）：**内核态可执行特权指令**（改页表、访问设备、关中断），用户态不行 → 保护内核\n- 进入内核三途径：**系统调用（自愿）、中断（外设）、异常/缺页（被动）**；流程：trap 进内核 → 保存用户上下文 → 执行 → 恢复返回\n- 成本：模式切换（保存/恢复寄存器、换栈）+ 缓存/分支预测器状态污染；Spectre/Meltdown 缓解（KPTI 页表隔离）让切换更贵\n- 优化：**减少次数**（批量 writev、缓冲、io_uring）、**vDSO**（gettimeofday 等纯计算放用户态映射页，零陷入）\n- 关联：一次 syscall 约 百 ns~μs 级，高频小 IO 是性能杀手 → 零拷贝/epoll/io_uring 的存在理由\n\n> 🔑 记忆口诀：「一次陷入全套换装，攒着批量过边界」\n> ⚠️ 常见追问：中断和系统调用的区别？（中断异步由外设触发；syscall 同步由指令触发，有明确调用点）\n\n---"
+        },
+        {
+          "id": "os:malloc-的底层实现-brk-和-mmap-怎么选",
+          "chapter": "内存管理",
+          "label": "malloc 的底层实现？brk 和 mmap 怎么选？",
+          "kind": "qa",
+          "content": "**A:**\n- malloc 是**库函数**（ptmalloc/jemalloc/tcmalloc）：向内核批发、向应用零售，用空闲链表/size class 管理堆内内存\n- 两个批发口：**brk/sbrk**（推高堆顶，小块快、中间有洞收缩难）与 **mmap**（独立映射区，大块用、munkey 整块立还）\n- glibc 经验阈值：**≥128KB 走 mmap**，小于走堆\n- 碎片：频繁 malloc/free 不同大小 → 外碎片（总空闲够但连不起来）；jemalloc/tcmalloc 用 size class + 多 arena 缓解\n- free 之后没还 OS？（小块进空闲链表等复用；堆顶空闲够阈值才 trim 归还）\n\n> 🔑 记忆口诀：「小块堆里转手，大块直接 mmap；free 是还库不是还国」\n> ⚠️ 常见追问：多线程 malloc 为什么慢？（全局锁竞争 → arena/tcache，或上层内存池）\n\n---"
+        },
+        {
           "id": "os:epoll-和-select/poll-的区别-为什么-epoll-高效",
           "chapter": "io-模型",
           "label": "epoll 和 select/poll 的区别？为什么 epoll 高效？",
@@ -152,6 +194,27 @@
           "label": "Reactor 和 Proactor 模式？",
           "kind": "qa",
           "content": "**A:**\n- **Reactor**（同步 IO）：事件到来时**通知你可以读了**，由你的线程自己完成 read → 处理 → write。关注「就绪事件」。如 Redis、Netty、muduo\n  - 单 Reactor 单线程（Redis）／单 Reactor 多线程／主从 Reactor 多线程（Netty 主从模型）\n- **Proactor**（异步 IO）：发起异步读，内核完成后**通知你数据已经在你的缓冲区里了**。关注「完成事件」。如 Windows IOCP、基于 io_uring 的框架\n- 区别一句话：Reactor 通知「可以做」；Proactor 通知「已做完」\n\n> 🔑 记忆口诀：「Reactor 通知就绪自己干，Proactor 内核干完再叫你」\n> ⚠️ 常见追问：Redis 6.0 的多线程 IO 改了什么？\n\n---"
+        },
+        {
+          "id": "os:中断和软中断是什么-为什么需要下半部",
+          "chapter": "io-模型",
+          "label": "中断和软中断是什么？为什么需要下半部？",
+          "kind": "qa",
+          "content": "**A:**\n- **硬中断**：外设通知 CPU（网卡来包、磁盘完成），打断当前执行进 ISR（中断服务程序）；ISR 必须**快**（期间常关中断，慢了丢事件）→ 只做最紧急的部分（如把 DMA 指针入队）\n- **软中断/下半部**：把可延迟工作挪出 ISR（Linux: softirq / tasklet / workqueue）；网络收包大头在 NET_RX softirq（每 CPU 队列），负载高时 ksoftirqd 内核线程兜底\n- 性能关联：**高 PPS 时软中断打满 CPU**（top 里 %si）→ RSS/RPS 多队列把网卡中断分散多核；这是「epoll 高效但中断仍是入口成本」的背景\n- 优先级：硬中断 > 软中断 > 普通进程\n\n> 🔑 记忆口诀：「硬中断收快递，软中断拆包裹」\n> ⚠️ 常见追问：中断上下文为什么不能睡眠？（不隶属任何进程、无法被调度，睡眠=死等）\n\n---"
+        },
+        {
+          "id": "os:cpu-缓存与伪共享-false-sharing",
+          "chapter": "并发与死锁",
+          "label": "CPU 缓存与伪共享 (false sharing)？",
+          "kind": "qa",
+          "content": "**A:**\n- 多核各有 L1/L2、共享 L3；**缓存一致性协议（MESI）以 cache line（通常 64B）为单位**维护\n- **伪共享**：两线程各写**不同变量**，但落在**同一条 cache line** → 每次写让对方核的该行失效（乒乓）→ 加线程不升反降，代码层面「明明没共享」却互相拖累\n- 排查：perf c2c；解决：`alignas(64)` / padding 隔离热字段；标准库提供 `std::hardware_destructive_interference_size`\n- 缓存直觉：时间局部性（复用）、空间局部性（顺序访问、SoA 数组化）、热字段别跨行\n\n> 🔑 记忆口诀：「64 字节一条船，别让俩线程同船各划各的」\n> ⚠️ 常见追问：MESI 四态？（M 改独 / E 独净 / S 共享 / I 失效）\n\n---"
+        },
+        {
+          "id": "os:条件变量为什么要配合-mutex-什么是虚假唤醒",
+          "chapter": "并发与死锁",
+          "label": "条件变量为什么要配合 mutex？什么是虚假唤醒？",
+          "kind": "qa",
+          "content": "**A:**\n- 标准用法：持 `unique_lock` 改共享条件 → `cv.wait(lck, pred)`；**wait 内部：条件不满足则解锁并睡，被唤醒后先加锁再复查**\n- 为什么必须持锁改条件：否则「检查条件→入睡」之间另一线程改了条件并 notify，**通知落在睡眠之前 → 永远错过**（丢失唤醒）；mutex 把「检查+入睡」变成原子\n- **虚假唤醒 (spurious wakeup)**：实现层面（futex 重启、多核时序）可能无人 notify 也醒 → 必须**循环重查条件**（谓词版 wait 内置了 while）\n- notify 持锁与否：语义都对；不持锁可避免「唤醒后立刻卡在等锁」，但**改条件本身必须持锁**\n- 对照：信号量管计数，条件变量管任意谓词\n\n> 🔑 记忆口诀：「改条件要持锁，醒来必须再检查」\n> ⚠️ 常见追问：wait 为什么放 while 不放 if？（虚假唤醒 + notify_all 会唤醒不满足者）\n\n---"
         },
         {
           "id": "os:死锁的四个必要条件",
@@ -221,6 +284,30 @@
           "label": "下一问"
         },
         {
+          "s": "os:协程是什么-和线程的关系",
+          "t": "os:进程有哪些状态-五态模型怎么转换",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "os:进程有哪些状态-五态模型怎么转换",
+          "t": "os:进程调度算法有哪些-linux-用什么",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "os:进程调度算法有哪些-linux-用什么",
+          "t": "os:fork-的过程-写时复制-cow-是怎么工作的",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "os:fork-的过程-写时复制-cow-是怎么工作的",
+          "t": "os:僵尸进程-/-孤儿进程-/-守护进程",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
           "s": "os:虚拟内存的作用与原理",
           "t": "os:分页-/-分段-/-段页式",
           "kind": "seq",
@@ -257,6 +344,18 @@
           "label": "下一问"
         },
         {
+          "s": "os:内存对齐的原因和规则",
+          "t": "os:用户态和内核态-系统调用的成本在哪",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "os:用户态和内核态-系统调用的成本在哪",
+          "t": "os:malloc-的底层实现-brk-和-mmap-怎么选",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
           "s": "os:epoll-和-select/poll-的区别-为什么-epoll-高效",
           "t": "os:五种-io-模型",
           "kind": "seq",
@@ -277,6 +376,24 @@
         {
           "s": "os:零拷贝技术有哪些",
           "t": "os:reactor-和-proactor-模式",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "os:reactor-和-proactor-模式",
+          "t": "os:中断和软中断是什么-为什么需要下半部",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "os:cpu-缓存与伪共享-false-sharing",
+          "t": "os:条件变量为什么要配合-mutex-什么是虚假唤醒",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "os:条件变量为什么要配合-mutex-什么是虚假唤醒",
+          "t": "os:死锁的四个必要条件",
           "kind": "seq",
           "label": "下一问"
         },
@@ -381,6 +498,48 @@
           "t": "os:死锁的四个必要条件",
           "kind": "rel",
           "label": "用锁不当的后果"
+        },
+        {
+          "s": "os:fork-的过程-写时复制-cow-是怎么工作的",
+          "t": "os:缺页中断的过程",
+          "kind": "rel",
+          "label": "COW 靠缺页异常实现"
+        },
+        {
+          "s": "os:fork-的过程-写时复制-cow-是怎么工作的",
+          "t": "os:mmap-的原理和适用场景",
+          "kind": "rel",
+          "label": "进程地址空间复制的落点"
+        },
+        {
+          "s": "os:cpu-缓存与伪共享-false-sharing",
+          "t": "os:原子操作是如何实现的",
+          "kind": "rel",
+          "label": "缓存一致性是原子的地基"
+        },
+        {
+          "s": "os:条件变量为什么要配合-mutex-什么是虚假唤醒",
+          "t": "os:线程同步方式有哪些",
+          "kind": "rel",
+          "label": "条件变量的全景位置"
+        },
+        {
+          "s": "os:malloc-的底层实现-brk-和-mmap-怎么选",
+          "t": "os:虚拟内存的作用与原理",
+          "kind": "rel",
+          "label": "堆是地址空间里的映射"
+        },
+        {
+          "s": "os:中断和软中断是什么-为什么需要下半部",
+          "t": "os:epoll-和-select/poll-的区别-为什么-epoll-高效",
+          "kind": "rel",
+          "label": "网络包从软中断到 epoll"
+        },
+        {
+          "s": "os:用户态和内核态-系统调用的成本在哪",
+          "t": "os:零拷贝技术有哪些",
+          "kind": "rel",
+          "label": "减少穿越边界是共同目标"
         }
       ],
       "warnings": []
@@ -523,6 +682,20 @@
           "content": "**A:**\n- 单继承：对象头部一个 **vptr**（指向类的 vtable），成员按声明顺序（受对齐影响）排布；vtable 里是函数指针数组 + RTTI/type_info + 到基类的偏移信息\n- `sizeof(空类)` = 1；`sizeof(含虚函数空类)` = 指针大小（只多一个 vptr）\n- **多重继承**：每个含虚函数的基类子对象各有一个 vptr → 对象里有多个 vptr；`this` 指针在跨基类转换时会做**偏移调整**（thunk）\n- 虚继承：加 vbptr/虚基类表解决菱形继承的数据冗余，访问虚基类成员多一次间接\n- 与 C 结构互操作时 vptr 是障碍 → 用 `extern \"C\"` / POD 设计隔离\n\n> 🔑 记忆口诀：「一个虚基类一个 vptr，多继承多指针，转换走 thunk」\n> ⚠️ 常见追问：为什么构造顺序是基类→成员→派生类？（vptr 逐层就位，保证每层构造里调虚函数落到当前层）\n\n---"
         },
         {
+          "id": "cpp:四种-cast-static/dynamic/const/reinterpret_cast",
+          "chapter": "面向对象",
+          "label": "四种 cast（static/dynamic/const/reinterpret_cast）？",
+          "kind": "qa",
+          "content": "**A:**\n| cast | 用途 | 检查 |\n|---|---|---|\n| `static_cast` | 数值转换、上行转换（派生→基类）、void* 还原 | 编译期，不查运行时类型 |\n| `dynamic_cast` | **多态类型**下行/侧向转换 | **运行时 RTTI 查虚表**，失败指针返 nullptr（引用抛 bad_cast） |\n| `const_cast` | 加/去 const（去 const 改本就 const 的对象是 UB） | 编译期 |\n| `reinterpret_cast` | 位模式重解释（指针↔整数、不相关指针） | 无检查，最危险 |\n- 要求：类至少有一个虚函数才可 dynamic_cast；下行转换用 dynamic 防止「静态_cast 硬转错的派生类型」\n- C 风格 `(T)x` = 尽量组合上面几种的「不写明意图」版 → 禁用（review 无法判断风险）\n\n> 🔑 记忆口诀：「数值 static，下行 dynamic，去 const 少用，重解释慎用」\n> ⚠️ 常见追问：dynamic_cast 为什么慢/能不能替代？（走 RTTI 字符串/类型比较，热路径避免；更好的设计是虚函数不转型）\n\n---"
+        },
+        {
+          "id": "cpp:菱形继承的问题与虚继承-virtual-inheritance",
+          "chapter": "面向对象",
+          "label": "菱形继承的问题与虚继承 (virtual inheritance)？",
+          "kind": "qa",
+          "content": "**A:**\n- 菱形：B、C 都继承 A，D 继承 B、C → D 里有**两份 A**（二义性 + 数据冗余）：`d.x` 编译错（B::A::x 还是 C::A::x？）\n- **虚继承** `class B : virtual public A`：D 中 A 只保留一份；代价：\n  1. D 的对象布局里 A 由 **vbptr/虚基类表**间接定位（多一次偏移寻址）\n  2. **最派生类负责构造虚基类**（B、C 构造里对 A 的初始化被跳过），初始化顺序：虚基类 → 直接基类 → 成员 → 自身\n- 工程实践：**能用组合就用组合**；STL 的 iostream 是经典虚继承案例；接口类（纯虚 + 无数据）多继承没这些问题\n\n> 🔑 记忆口诀：「菱形两份 A 惹歧义，virtual 继承压成一份但加间接」\n> ⚠️ 常见追问：为什么最派生类要负责虚基类构造？（否则 B、C 各自构造 A 又变两份）\n\n---"
+        },
+        {
           "id": "cpp:const-的各种用法",
           "chapter": "关键字",
           "label": "const 的各种用法？",
@@ -586,6 +759,27 @@
           "content": "**A:**\n- **const**：运行期（或编译期）只读，「不能修改」，初始化可以发生在运行时：`const int n = f();`\n- **constexpr**：「可以在**编译期**求值」，修饰变量要求初始化式也是常量表达式；修饰函数表示**能**在编译期执行（传入非常量则退化为运行时）\n- C++14/17/20 逐步放宽 constexpr 函数的限制（循环、分支、虚函数）\n- 数组大小、模板参数需要编译期常量 → 用 constexpr\n\n> 🔑 记忆口诀：「const 是只读，constexpr 是编译期可算」\n> ⚠️ 常见追问：const 变量能做数组大小吗？constexpr 函数一定在编译期执行吗？\n\n---"
         },
         {
+          "id": "cpp:std-atomic-和内存序-memory_order",
+          "chapter": "现代特性",
+          "label": "std::atomic 和内存序 (memory_order)？",
+          "kind": "qa",
+          "content": "**A:**\n- `std::atomic<T>`：免锁的原子读写/RMW（fetch_add、CAS compare_exchange）；保证**该变量的操作不可分割** + 跨线程可见性（一个线程写完，另一线程读必见新值，无数据竞争 UB）\n- 底层：字节/字对齐时用 CPU 原子指令（lock 前缀 xadd/cmpxchg、LL/SC）；大于字长或未对齐退化为库锁\n- **内存序**（默认 `seq_cst` 全局一致最稳但最慢）：\n  - `acquire`（读）：后面的读写不能重排到它前\n  - `release`（写）：前面的读写不能重排到它后\n  - **release-acquire 配对**：构成同步关系，发布/订阅模式（生产者 store(release)，消费者 load(acquire) 即见其之前的所有写入）\n  - `relaxed`：只保证原子性不保证顺序（计数器够用）；`acq_rel`（RMW）；`consume` 实践中按 acquire 处理\n- 典型误用：用 atomic 当「更快的锁」保护多变量不变式——**atomic 只保护单个变量**，多变量一致性还得 mutex\n\n> 🔑 记忆口诀：「一个变量用原子，配对 acquire/release 建立可见性」\n> ⚠️ 常见追问：double-checked locking 为什么要 atomic + acquire？（先检查指针的读必须与发布写构成同步，否则可能看到半构造对象）\n\n---"
+        },
+        {
+          "id": "cpp:c++20-协程-co_await/co_yield/co_return",
+          "chapter": "现代特性",
+          "label": "C++20 协程 (co_await/co_yield/co_return)？",
+          "kind": "qa",
+          "content": "**A:**\n- 函数体含 `co_await / co_yield / co_return` 即协程：调用后**暂停在挂起点**，把控制权还给调用者，之后从暂停处恢复\n- 机制：编译器把局部状态装箱进**帧（分配在堆）**，返回 `promise_type` 约定的对象；`co_await expr` 按 awaiter 三件套工作：`await_ready`（可免挂起）→ `await_suspend`（挂起并交还控制）→ `await_resume`（恢复取结果）\n- C++20 给机制不给库：`task`/`generator` 要自己写或用 cppcoro；无栈协程（对比 goroutine 有栈）——**暂停点必须显式写 co_await**\n- 工程关联：异步 IO（asio awaitable）、生成器惰性序列；协程切换用户态纳秒级，但**co_await 一个阻塞调用照样卡线程**\n\n> 🔑 记忆口诀：「co_await 挂起不阻塞，状态装箱在堆上；await 三件套管生死」\n> ⚠️ 常见追问：有栈 vs 无栈协程？（goroutine 有栈可任意深度挂起；C++20 无栈只能挂在标记点，但帧更小）\n\n---"
+        },
+        {
+          "id": "cpp:异常安全是什么-几个等级",
+          "chapter": "现代特性",
+          "label": "异常安全是什么？几个等级？",
+          "kind": "qa",
+          "content": "**A:**\n- 异常安全承诺分四级：\n  1. **基本保证**：抛异常后对象处于合法（可析构）状态，不泄漏，但值不确定\n  2. **强保证**：要么成功要么**回滚到调用前状态**（copy-and-swap 惯用法一步完成）\n  3. **不抛保证 (noexcept)**：承诺不抛（移动构造/析构/swap 应尽量 noexcept）\n  4. 无保证 = bug\n- 手段：RAII 管资源（异常传播时析构照跑 → 不泄漏）、先做可能抛的副本操作再 commit、pImpl 隔离\n- `noexcept` 的性能意义：vector 扩容时移动还是拷贝就看移动构造是否 noexcept（`std::move_if_noexcept`）\n- 禁用场景：游戏/嵌入式常 `-fno-exceptions`；跨 ABI/插件边界不要抛\n\n> 🔑 记忆口诀：「RAII 保基本，copy-and-swap 保强，移动析构标 noexcept」\n> ⚠️ 常见追问：构造函数抛异常会泄漏吗？（成员已构造的会析构，自身析构不跑 → 构造内裸 new 要立即捕获删除，用智能指针成员最稳）\n\n---"
+        },
+        {
           "id": "cpp:vector-扩容机制-为什么是-1.5-倍或-2-倍",
           "chapter": "stl-与底层",
           "label": "vector 扩容机制？为什么是 1.5 倍或 2 倍？",
@@ -626,6 +820,20 @@
           "label": "vector / list / deque 怎么选型？",
           "kind": "qa",
           "content": "**A:**\n| | vector | list | deque |\n|---|---|---|---|\n| 内存 | **连续** | 节点离散 + 前后指针 | 分段连续（map of chunks） |\n| 随机访问 | O(1) | O(n) | O(1)（两次寻址） |\n| 头/尾插入 | 尾 O(1) 均摊 | 两端 O(1) | 两端 O(1) |\n| 中间插入 | O(n) 搬移 | O(1) 定位后（但定位本身 O(n)） | O(n) |\n| 缓存友好 | ★★★ | ★ | ★★ |\n\n- 默认选 **vector**：连续内存的缓存局部性优势经常碾压 list 的理论复杂度优势\n- list 只在**频繁中间拼接、迭代器绝对不能失效、对象巨大移动昂贵**时才值得\n- deque 适合队列/滑动窗口（两头进出）\n\n> 🔑 记忆口诀：「默认 vector；两头 deque；链表三思」\n> ⚠️ 常见追问：为什么「list 中间插入 O(1)」是误导？（先要 O(n) 走过去）\n\n---"
+        },
+        {
+          "id": "cpp:unordered_map-的底层实现-哈希冲突和扩容怎么处理",
+          "chapter": "stl-与底层",
+          "label": "unordered_map 的底层实现？哈希冲突和扩容怎么处理？",
+          "kind": "qa",
+          "content": "**A:**\n- 结构：**拉链法**哈希表（libstdc++：一个桶数组，每桶单链红黑树节点指针；冲突元素串成链）；bucket_count × max_load_factor(默认1.0) < size 时 **rehash**（桶数取不小于 2 倍的素数，全部重新散列 → 迭代器失效、引用不失效）\n- 哈希函数：内置类型/ string 有特化（FNV 等素数乘）；自定义 key 需提供 `hash` 或重载 `operator==` + 传仿函数\n- 为什么桶数取**素数**？（mod 素数让模式化 key 分布更均匀；power-of-2 + 位掩码是另一流派的取舍）\n- 极端冲突退化：全部同桶 → 查找 O(n)；对抗性输入可做哈希洪水攻击 → 关键服务用随机化种子哈希\n- `reserve(n)` 一次到位避免多次 rehash；`at()` 抛 out_of_range，`operator[]` 不存在时**默认插入**\n\n> 🔑 记忆口诀：「拉链挂桶，超载 rehash 换素数桶」\n> ⚠️ 常见追问：为什么 map 用红黑树还要 unordered_map？（O(1) 均摊 vs O(log n) 有序；不要有序/不需要范围查询选 hash）\n\n---"
+        },
+        {
+          "id": "cpp:std-function-是什么-实现原理和开销",
+          "chapter": "stl-与底层",
+          "label": "std::function 是什么？实现原理和开销？",
+          "kind": "qa",
+          "content": "**A:**\n- **类型擦除的通用可调用对象包装器**：能装 lambda、函数指针、bind 结果、仿函数——只要签名匹配 `R(Args...)`\n- 实现套路：内部持有**两个指针**（存储体 + 管理函数指针），管理函数负责拷贝/析构/调用（虚函数表 or 函数指针分派二选一）；小对象（lambda 捕获小）走 **SSO 小缓冲**避免堆分配\n- 开销：一次间接调用（可能阻碍内联）+ 拷贝可能堆分配 + 比 naked 函数指针大（32/48 字节）\n- 替代：模板参数 `template<typename F>` 零开销（但放头文件、每实例化一份）；`std::move_only_function`（C++23）避免拷贝要求\n- 关联：回调注册、事件系统（游戏引擎 Editor 工具大量用）；和 UE 委托 (Delegate) 同思想\n\n> 🔑 记忆口诀：「类型擦除双指针，小捕获栈上走，调用隔一层」\n> ⚠️ 常见追问：std::bind 为什么不推荐了？（lambda 可读、可优化、能泛型；bind 占位符晦涩且占堆）\n\n---"
         },
         {
           "id": "cpp:大端小端及判断方法",
@@ -743,6 +951,18 @@
           "label": "下一问"
         },
         {
+          "s": "cpp:含虚函数的对象内存布局是怎样的",
+          "t": "cpp:四种-cast-static/dynamic/const/reinterpret_cast",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "cpp:四种-cast-static/dynamic/const/reinterpret_cast",
+          "t": "cpp:菱形继承的问题与虚继承-virtual-inheritance",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
           "s": "cpp:const-的各种用法",
           "t": "cpp:static-的各种用法",
           "kind": "seq",
@@ -785,6 +1005,24 @@
           "label": "下一问"
         },
         {
+          "s": "cpp:constexpr-和-const-的区别",
+          "t": "cpp:std-atomic-和内存序-memory_order",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "cpp:std-atomic-和内存序-memory_order",
+          "t": "cpp:c++20-协程-co_await/co_yield/co_return",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "cpp:c++20-协程-co_await/co_yield/co_return",
+          "t": "cpp:异常安全是什么-几个等级",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
           "s": "cpp:vector-扩容机制-为什么是-1.5-倍或-2-倍",
           "t": "cpp:map-和-unordered_map-的区别与实现",
           "kind": "seq",
@@ -811,6 +1049,18 @@
         {
           "s": "cpp:std-string-的-sso-短字符串优化-是什么",
           "t": "cpp:vector-/-list-/-deque-怎么选型",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "cpp:vector-/-list-/-deque-怎么选型",
+          "t": "cpp:unordered_map-的底层实现-哈希冲突和扩容怎么处理",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "cpp:unordered_map-的底层实现-哈希冲突和扩容怎么处理",
+          "t": "cpp:std-function-是什么-实现原理和开销",
           "kind": "seq",
           "label": "下一问"
         },
@@ -897,6 +1147,24 @@
           "t": "cpp:静态链接-vs-动态链接",
           "kind": "rel",
           "label": "链接视角的 ABI"
+        },
+        {
+          "s": "cpp:四种-cast-static/dynamic/const/reinterpret_cast",
+          "t": "cpp:c++-的虚函数是怎么实现的-虚函数表-vtable-原理",
+          "kind": "rel",
+          "label": "dynamic_cast 走虚表 RTTI"
+        },
+        {
+          "s": "cpp:菱形继承的问题与虚继承-virtual-inheritance",
+          "t": "cpp:含虚函数的对象内存布局是怎样的",
+          "kind": "rel",
+          "label": "都是对象布局问题"
+        },
+        {
+          "s": "cpp:unordered_map-的底层实现-哈希冲突和扩容怎么处理",
+          "t": "cpp:map-和-unordered_map-的区别与实现",
+          "kind": "rel",
+          "label": "哈希表深挖"
         }
       ],
       "warnings": []
@@ -1470,6 +1738,274 @@
           "t": "mihoyo:这个岗位到底是做什么的-和-gameplay-ai-/-算法岗的区别",
           "kind": "rel",
           "label": "业务认知建立在岗位理解上"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "aiinfra",
+      "name": "AI Infra",
+      "note": "interview-prep/aiinfra/AI-Infra.md",
+      "source": "notes",
+      "chapters": [
+        {
+          "id": "gpu-体系结构",
+          "name": "GPU 体系结构"
+        },
+        {
+          "id": "推理系统优化",
+          "name": "推理系统优化"
+        },
+        {
+          "id": "方法论与框架",
+          "name": "方法论与框架"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "aiinfra:gpu-和-cpu-的本质区别-为什么-gpu-适合深度学习",
+          "chapter": "gpu-体系结构",
+          "label": "GPU 和 CPU 的本质区别？为什么 GPU 适合深度学习？",
+          "kind": "qa",
+          "content": "**A:**\n| | CPU | GPU |\n|---|---|---|\n| 核心数 | 少（4~64）大核，乱序超标量 | 数千小核（ALU 堆料） |\n| 设计目标 | **延迟导向**：分支预测/大缓存/乱序，尽快做完一件事 | **吞吐导向**：海量线程填满流水线，隐藏访存延迟 |\n| 控制逻辑 | 复杂（占大量面积） | 极简（面积给算术单元） |\n| 内存带宽 | ~100GB/s 级 | HBM ~1-3TB/s 级（矩阵数据吃得动） |\n- 深度学习 = 大量稠密矩阵乘 + 规整并行 → 正中 GPU 下怀；SIMT 执行 + 高带宽显存是关键\n- 面试追问热点：**训练慢通常卡在哪**？（算力利用率 SM occupancy / 显存带宽 / PCIe 数据传输 / kernel 间空隙，要会分层归因）\n\n> 🔑 记忆口诀：「CPU 省延迟，GPU 赚吞吐；矩阵喂得饱，带宽不可少」\n> ⚠️ 常见追问：为什么 GPU 不适合强分支逻辑？（SIMT 同 warp 同指令，分歧串行化）\n\n---"
+        },
+        {
+          "id": "aiinfra:sm-warp-simt-分别是什么",
+          "chapter": "gpu-体系结构",
+          "label": "SM、Warp、SIMT 分别是什么？",
+          "kind": "qa",
+          "content": "**A:**\n- **SM（Streaming Multiprocessor）**：GPU 的「大核」，含寄存器堆、共享内存、数十个 CUDA Core / Tensor Core、调度器；一块 GPU 几十~一百多个 SM\n- **Warp**：调度的最小单位，**32 个线程绑死同进同退**，取同一条指令分发给 32 lanes\n- **SIMT**（单指令多线程）：像 SIMD 但每线程有自己的寄存器和地址（可以各自寻址），分歧时硬件把不同路径拆成多次执行\n- 层级：Grid → Block → Warp(32) → Thread；Block 映射到单个 SM（共享内存/同步只在本 Block 内有效）\n- Tensor Core：做 4×4/8×8 级矩阵融合乘加（FP16/BF16/INT8/FP8），Transformer 的算力主力\n\n> 🔑 记忆口诀：「SM 是车间，Warp 是最小流水班（32 人）」\n> ⚠️ 常见追问：一个 SM 同时跑多个 Block 靠什么决定？（寄存器/共享内存用量决定 occupancy）\n\n---"
+        },
+        {
+          "id": "aiinfra:warp-分化-divergence-为什么伤性能",
+          "chapter": "gpu-体系结构",
+          "label": "Warp 分化（divergence）为什么伤性能？",
+          "kind": "qa",
+          "content": "**A:**\n- 同一 warp 的 32 线程遇到 if/else 走不同分支 → **硬件串行执行两条路径**，不走的路径 lanes 关闭空转 → 有效吞吐直接减半甚至更糟（多路分支更甚）\n- 经典踩坑：`if (threadIdx.x < k)` 的小分支、循环边界不对齐（`for i = threadIdx.x; i < n; i += 32` 时最后一轮长短不齐）\n- 优化：把分歧**按 warp 对齐拆数据**（让同 warp 走同一路径）；branch 改算术（mask/select）；排序/分桶让同类线程聚齐\n- 关联：softmax/layernorm 里 mask 无效位置时用算术掩码而不是 if 跳过\n\n> 🔑 记忆口诀：「一个 warp 一条心，分道扬镳就串行」\n> ⚠️ 常见追问：循环里所有线程迭代次数不同算分化吗？（算——尾部长短不齐就是路径分歧）\n\n---"
+        },
+        {
+          "id": "aiinfra:cuda-的存储层级和共享内存-什么是-bank-conflict",
+          "chapter": "gpu-体系结构",
+          "label": "CUDA 的存储层级和共享内存？什么是 bank conflict？",
+          "kind": "qa",
+          "content": "**A:**\n- 层级（快→慢）：**寄存器（线程私有）→ 共享内存（Block 内共享，片上 SRAM，~几十 μs 级访问）→ L2 → 全局内存 HBM（数百~上千周期）**；常量内存/纹理内存另有通路\n- 共享内存是**程序员管理的缓存**：先把全局数据 cooperative 加载进来，Block 内 `__syncthreads()` 同步后再高频复用（GEMM 的 tile 就靠它）\n- **bank conflict**：共享内存分 32 个 bank，同一 warp 内多个线程**同时访问同一 bank 的不同地址** → 串行化； broadcasts（同地址）不冲突\n- 排查：nsight compute 的 memory workload 分析；解法：**padding**（+1 列错开 bank）、swizzle 重排、向量化访问模式\n- 寄存器溢出（spill to local）也会掉性能：看 ptxas 的 reg 数与 occupancy 的权衡\n\n> 🔑 记忆口诀：「寄存器最快，共享内存靠 tile，bank 撞车要 padding」\n> ⚠️ 常见追问：为什么 GEMM 要分 tile？（数据复用 × 算术强度，把 O(N³) 计算对 O(N²) 数据吃满带宽）\n\n---"
+        },
+        {
+          "id": "aiinfra:算子融合-operator-fusion-为什么能加速推理",
+          "chapter": "推理系统优化",
+          "label": "算子融合（operator fusion）为什么能加速推理？",
+          "kind": "qa",
+          "content": "**A:**\n- 每个算子单独跑：**kernel launch 开销**（每次 ~μs 级，算子小则占比极高）+ **中间结果写回显存再读出**（HBM 带宽是稀缺资源）\n- 融合后：一次 launch、中间结果**留在寄存器/共享内存** → 省带宽省启动\n- 典型：`matmul + bias + activation` 融成一个 kernel；LayerNorm 的均值/方差/缩放融合；残差 add 融进下一个 GEMM 的 epilogue\n- 实现层：TensorRT 的图优化自动融合、torch.compile/TVM 的 pattern rewriting、手写 Triton/CUDA kernel\n- 融不了的：需要全局同步的、改变数据布局代价过大的；有些融合让数值行为变化（大数吃小数）要回归精度\n\n> 🔑 记忆口诀：「launch 要钱，HBM 要命；中间结果不出寄存器」\n> ⚠️ 常见追问：CUDA Graph 解决的是哪部分开销？（整图录制一次重放，消的是 launch/调度开销，不是带宽）\n\n---"
+        },
+        {
+          "id": "aiinfra:llm-推理为什么分-prefill-和-decode-两阶段",
+          "chapter": "推理系统优化",
+          "label": "LLM 推理为什么分 Prefill 和 Decode 两阶段？",
+          "kind": "qa",
+          "content": "**A:**\n- **Prefill（预填充）**：一次性**并行**处理整段 prompt（GEMM 形态，算力密集，吃 Tensor Core），产出第一个 token 的 logits 和全部 KV\n- **Decode（解码）**：每步只算**一个新 token**，读历史 KV Cache（访存密集，GEMV 形态，**显存带宽是瓶颈**）\n- 两阶段资源画像完全相反 → 优化手段不同：Prefill 拼 chunk 提高并行度；Decode 靠 batching 拼请求、量化压 KV、GQA/MQA 减 KV\n- 指标也分家：**TTFT（首 token 延迟）主要由 Prefill 决定；TPOT/每 token 生成时间由 Decode 决定**\n- 这正是 PD 分离架构的出发点（两阶段用不同硬件/实例分别优化）\n\n> 🔑 记忆口诀：「Prefill 吃算力，Decode 吃带宽；首字慢看前，出字慢看后」\n> ⚠️ 常见追问：为什么 Decode 是访存bound？（每 token 都要把全部权重+KV 读一遍，计算只有一次向量乘）\n\n---"
+        },
+        {
+          "id": "aiinfra:kv-cache-的原理-显存怎么算",
+          "chapter": "推理系统优化",
+          "label": "KV Cache 的原理？显存怎么算？",
+          "kind": "qa",
+          "content": "**A:**\n- 自回归生成时，历史 token 的 K/V **不会变** → 算过就存起来，避免每步重算整段注意力；这是空间换时间的核心\n- 显存公式：**KV_bytes = 2 × L × H_kv × d_head × seq_len × batch × bytes_per_element**（2 = K 和 V；L = 层数；H_kv = KV 头数）\n- 例子：L=32、H_kv=8（GQA 后）、d_head=128、FP16、seq=4K、batch=8 → 2×32×8×128×4096×8×2 ≈ **4GB+**，随长度/批量线性涨，长上下文直接吃爆显存\n- 省显存手段：**GQA/MQA**（少 KV 头）、量化 KV（FP8/INT8）、PagedAttention（消碎片）、滑窗/衰减淘汰旧 token\n- 面试经典（阿里真题）：Prefill 阶段要不要 KV Cache？（Cache 只在 Decode 复用；Prefill 本身全并行计算，KV 是顺带产出物）\n\n> 🔑 记忆口诀：「2 × 层 × KV头 × 头维 × 长 × 批 × 精度；GQA 砍头最划算」\n> ⚠️ 常见追问：MQA/GQA 为什么不掉点太多？（KV 头共享信息冗余度高，query 头保留即可）\n\n---"
+        },
+        {
+          "id": "aiinfra:pagedattention-/-vllm-解决了什么问题",
+          "chapter": "推理系统优化",
+          "label": "PagedAttention / vLLM 解决了什么问题？",
+          "kind": "qa",
+          "content": "**A:**\n- 痛点：KV Cache 按**最大长度预留连续显存** → ①**内部碎片**（预留 2K 实际用 300）②**外部碎片**（连续大块切不出来）→ 显存利用率常仅 20~40%，batch 上不去\n- PagedAttention：借操作系统**分页**思想——KV 切成固定 block（如 16 token/块），**逻辑连续物理离散**，块表映射；按需分配、共享（beam/前缀复用 copy-on-write）\n- 效果：碎片近乎消灭，同显存下 batch 更大 → 吞吐数倍提升（论文 2-4×）\n- vLLM 围绕它建的服务栈：调度器 + PagedAttention kernel + continuous batching\n- 局限：块表管理开销、跨块注意力的 kernel 实现复杂、超长单序列仍是瓶颈\n\n> 🔑 记忆口诀：「KV 也学 OS 分页，按块分配不预留」\n> ⚠️ 常见追问：前缀共享怎么实现？（相同 system prompt 的多请求指向同批 KV 块，写时复制）\n\n---"
+        },
+        {
+          "id": "aiinfra:continuous-batching-连续批处理-是什么",
+          "chapter": "推理系统优化",
+          "label": "Continuous Batching（连续批处理）是什么？",
+          "kind": "qa",
+          "content": "**A:**\n- 静态批处理（static batching）的问题：一个 batch 里序列长短不一，**短的生成完了也要陪跑等最长的**，整个 batch 一起返回 → GPU 空转\n- **Iteration 级调度**：每一步 decode 后检查——完成的请求**立即出队返回**，新请求**随时插队**拼进当前 step → GPU 始终满载\n- 这是 vLLM/TGI 吞吐优势的第二支柱（与 PagedAttention 互补：一个管显存、一个管调度）\n- 工程细节：预留 slot（prefill 优先级/抢占）、解码预算、与 chunked prefill 配合避免长 prompt 阻塞\n- 关联：操作系统的**多道程序设计思想**在 GPU serving 上的翻版\n\n> 🔑 记忆口诀：「静态批陪跑到黑，连续批随完随走随插队」\n> ⚠️ 常见追问：抢占怎么做？（KV 块可换出/重算两种代价模型，vLLM 里 RECOMPUTE vs SWAP）\n\n---"
+        },
+        {
+          "id": "aiinfra:pd-分离-prefill-decode-disaggregation-架构是什么",
+          "chapter": "推理系统优化",
+          "label": "PD 分离（Prefill-Decode Disaggregation）架构是什么？",
+          "kind": "qa",
+          "content": "**A:**\n- 动机：Prefill 算力密集 + Decode 带宽密集，**混部署互相干扰**——一个大 prompt 的 prefill 会阻塞在线请求的 decode（尾延迟爆炸）\n- 做法：**两类实例分开部署**，Prefill 集群算完把 **KV Cache 传输**给 Decode 集群（高速互联/RDMA/NVLink，KV 传输是新增瓶颈）；调度器按负载分别扩缩容\n- 收益：TTFT 与 TPOT 分别调优、异构硬件各得其所（prefill 用高算力卡、decode 用大带宽卡）、整体吞吐提升（DistServe 论文口径）\n- 代价：系统复杂度（KV 传输一致性、调度、故障域翻倍）；小规模场景不一定划算\n- 面试表达：把它类比成「CPU 流水线分级」或「读写分离」都行，关键是说出**干扰来源和 KV 传输成本**\n\n> 🔑 记忆口诀：「算力和带宽分家，KV 搬家是代价」\n> ⚠️ 常见追问：什么规模才值得 PD 分离？（在线延迟敏感 + prefill/decode 负载失衡时收益才显著）\n\n---"
+        },
+        {
+          "id": "aiinfra:flashattention-为什么快",
+          "chapter": "推理系统优化",
+          "label": "FlashAttention 为什么快？",
+          "kind": "qa",
+          "content": "**A:**\n- 瓶颈定位：标准注意力的 **softmax 中间矩阵 N×N 要写回 HBM 再读**，显存读写量 O(N²)——计算不是瓶颈，**IO 才是**\n- FlashAttention：**IO 感知（IO-aware）**精确注意力——分块（tiling）计算：Q 块装进 SRAM，K/V 分块流过，**在线 softmax（running max/sum）**增量归一，**中间 N×N 矩阵从不落 HBM**\n- 效果：HBM 访问从 O(N²) 降到 O(N)，长序列下数倍提速 + 省显存；代价是 kernel 实现复杂（tiling/重计算策略），数值上等价精确解\n- FlashAttention-2/3：更好的并行切分（seq 维并行）、 warp 特化、Hopper 的 wgmma/异步\n- 面试一句话：**「用分块 + 在线 softmax 换掉 O(N²) 的显存往返」**\n\n> 🔑 记忆口诀：「注意力不快是 IO 拖的；分块流式算，矩阵不出片上」\n> ⚠️ 常见追问：为什么 softmax 能在线算？（维护 running max 和 sum，每块结果事后按统计量校正——数学上精确等价）\n\n---"
+        },
+        {
+          "id": "aiinfra:量化-gptq-/-awq-/-gguf-怎么比",
+          "chapter": "推理系统优化",
+          "label": "量化：GPTQ / AWQ / GGUF 怎么比？",
+          "kind": "qa",
+          "content": "**A:**\n- 共同目标：把 FP16 权重压到 INT8/INT4，**显存减半再减半、带宽压力同降、算力单元吞吐升**\n- **GPTQ**：训练后量化，逐层用**二阶（Hessian）信息**最小化重构误差，对「离群值大的层」稳；偏 GPU 服务端\n- **AWQ**：发现**约 1% 的显著权重通道**保护住即可保精度——按激活分布对每通道缩放再量化；推理快、兼容性好，服务端主流\n- **GGUF**：llama.cpp 生态容器格式（权重+元数据），K-quant 系列（Q4_K_M 等）混合位宽分块量化，**CPU/消费级卡友好**，效果损失小\n- 经验：INT4 权重量化对 7B+ 模型常规任务掉点小，但**长链推理/代码/数学掉点放大** → 必须拿业务评测集回归；**KV Cache 量化**（FP8/INT8）是另一条独立战线\n- 与 LoRA 搭配：QLoRA = 4bit 底座 + LoRA 微调（训得动 + 省显存）\n\n> 🔑 记忆口诀：「GPTQ 二阶稳，AWQ 护通道，GGUF 端侧跑；掉不掉点评测说了算」\n> ⚠️ 常见追问：为什么 4bit 还能用？（权重分布近似高斯，误差被后续层吸收；离群值单独处理是关键）\n\n---"
+        },
+        {
+          "id": "aiinfra:vllm-/-tensorrt-llm-/-sglang-/-llama.cpp-怎么定位选型",
+          "chapter": "方法论与框架",
+          "label": "vLLM / TensorRT-LLM / SGLang / llama.cpp 怎么定位选型？",
+          "kind": "qa",
+          "content": "**A:**\n| 框架 | 定位 | 强项 |\n|---|---|---|\n| **vLLM** | Python 服务框架 | PagedAttention + continuous batching，社区生态最广 |\n| **TensorRT-LLM** | NVIDIA 官方 C++ 推理栈 | kernel/图优化极致、量化全家桶、N 卡吃满；门槛高 |\n| **SGLang** | 高吞吐 serving + 结构化编程 | RadixAttention 前缀缓存、结构化输出强 |\n| **llama.cpp** | C/C++ 单机推理 | GGUF 量化、CPU/Mac/端侧、零依赖嵌入工具 |\n- 选型轴：**并发规模**（单机自用→llama.cpp；在线服务→vLLM/TRT-LLM）、**硬件**（N 卡闭源优化选 TRT 系；异构/端侧选 cpp）、**结构化输出/Agent 场景**（SGLang）\n- 面试加分：指出「框架收益大头来系统层（调度/显存），kernel 层差异看场景」——别只背名单\n\n> 🔑 记忆口诀：「服务 vLLM，压榨 TRT，结构 SGLang，端侧 cpp」\n> ⚠️ 常见追问：Triton Inference Server 和这些什么关系？（通用模型服务网关，后端可挂 TRT/vLLM——管协议/路由/监控那一层）\n\n---"
+        },
+        {
+          "id": "aiinfra:推理性能怎么评测-指标体系",
+          "chapter": "方法论与框架",
+          "label": "推理性能怎么评测？指标体系？",
+          "kind": "qa",
+          "content": "**A:**\n- 核心四元组：\n  - **TTFT**（Time To First Token，首 token 延迟——交互体验命门）\n  - **TPOT / ITL**（每 token 生成时间 / token 间延迟）\n  - **吞吐**（tokens/s，注意区分**总吞吐 vs 有效吞吐 goodput**——按完成的正确请求算）\n  - **资源**：显存占用（含 KV）、GPU 利用率（SM 占用）、功耗\n- 方法论：**压测要固定变量**——并发数、输入/输出长度分布（短进短出和长进长出结果天差地别）、批策略；画**吞吐-延迟曲线**找拐点（Pareto 前沿），别报单点\n- 工具：vLLM benchmark_serving、locust 自定义、nvidia-smi/dcuyl/ncu 深挖 kernel\n- 优化闭环：profile 定位（算子级？带宽？调度空隙？）→ 改一项 → 同口径回归；**先测后调，每步量化**\n\n> 🔑 记忆口诀：「TTFT 管体验，吞吐看曲线；先测后调，变量锁死」\n> ⚠️ 常见追问：GPU 利用率高就一定好吗？（util% 粗粒度——可能是空转 kernel 或分化，要看 SM 指令发射/内存带宽）\n\n---"
+        },
+        {
+          "id": "aiinfra:训练侧和推理侧的优化关注点有什么不同",
+          "chapter": "方法论与框架",
+          "label": "训练侧和推理侧的优化关注点有什么不同？",
+          "kind": "qa",
+          "content": "**A:**\n| | 训练 | 推理 |\n|---|---|---|\n| 瓶颈 | 算力 + 通信（AllReduce）+ 显存放状态 | 带宽 + 调度 + 延迟 |\n| 显存大头 | 优化器态（Adam 的 m/v 是权重 2 倍）+ 激活 | 权重 + KV Cache |\n| 典型手段 | 混合精度/BF16、**ZeRO 切分**、梯度检查点（算换显存）、张量/流水线并行、FSDP | 量化、KV 优化、batching、算子融合、投机解码 |\n| 指标 | loss 曲线、MFU（模型算力利用率）、步时 | TTFT/TPOT/吞吐/goodput |\n| 容错 | checkpoint 断点续训、弹性扩缩 | 请求级重试降级、多副本负载均衡 |\n- 投机解码（speculative decoding）小算法亮点：小模型草稿 + 大模型并行验证，无损加速 decode\n- 面试常考共同底座：通信库（NCCL）、集合通信原语、多机扩展时**通信与计算重叠**\n\n> 🔑 记忆口诀：「训练愁算力通信，推理愁带宽调度；训练看 MFU，推理看曲线」\n> ⚠️ 常见追问：梯度检查点为什么能省显存？（前向只存边界激活，反向时重算中间——用算力换显存）\n\n---"
+        }
+      ],
+      "edges": [
+        {
+          "s": "aiinfra:gpu-和-cpu-的本质区别-为什么-gpu-适合深度学习",
+          "t": "aiinfra:sm-warp-simt-分别是什么",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "aiinfra:sm-warp-simt-分别是什么",
+          "t": "aiinfra:warp-分化-divergence-为什么伤性能",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "aiinfra:warp-分化-divergence-为什么伤性能",
+          "t": "aiinfra:cuda-的存储层级和共享内存-什么是-bank-conflict",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "aiinfra:算子融合-operator-fusion-为什么能加速推理",
+          "t": "aiinfra:llm-推理为什么分-prefill-和-decode-两阶段",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "aiinfra:llm-推理为什么分-prefill-和-decode-两阶段",
+          "t": "aiinfra:kv-cache-的原理-显存怎么算",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "aiinfra:kv-cache-的原理-显存怎么算",
+          "t": "aiinfra:pagedattention-/-vllm-解决了什么问题",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "aiinfra:pagedattention-/-vllm-解决了什么问题",
+          "t": "aiinfra:continuous-batching-连续批处理-是什么",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "aiinfra:continuous-batching-连续批处理-是什么",
+          "t": "aiinfra:pd-分离-prefill-decode-disaggregation-架构是什么",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "aiinfra:pd-分离-prefill-decode-disaggregation-架构是什么",
+          "t": "aiinfra:flashattention-为什么快",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "aiinfra:flashattention-为什么快",
+          "t": "aiinfra:量化-gptq-/-awq-/-gguf-怎么比",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "aiinfra:vllm-/-tensorrt-llm-/-sglang-/-llama.cpp-怎么定位选型",
+          "t": "aiinfra:推理性能怎么评测-指标体系",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "aiinfra:推理性能怎么评测-指标体系",
+          "t": "aiinfra:训练侧和推理侧的优化关注点有什么不同",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "aiinfra:warp-分化-divergence-为什么伤性能",
+          "t": "aiinfra:sm-warp-simt-分别是什么",
+          "kind": "rel",
+          "label": "SIMT 同步执行的代价"
+        },
+        {
+          "s": "aiinfra:cuda-的存储层级和共享内存-什么是-bank-conflict",
+          "t": "aiinfra:算子融合-operator-fusion-为什么能加速推理",
+          "kind": "rel",
+          "label": "中间结果留在片上是共同主题"
+        },
+        {
+          "s": "aiinfra:continuous-batching-连续批处理-是什么",
+          "t": "aiinfra:pagedattention-/-vllm-解决了什么问题",
+          "kind": "rel",
+          "label": "vLLM 的显存+调度双支柱"
+        },
+        {
+          "s": "aiinfra:llm-推理为什么分-prefill-和-decode-两阶段",
+          "t": "aiinfra:pd-分离-prefill-decode-disaggregation-架构是什么",
+          "kind": "rel",
+          "label": "两阶段资源画像相反"
+        },
+        {
+          "s": "aiinfra:pd-分离-prefill-decode-disaggregation-架构是什么",
+          "t": "aiinfra:kv-cache-的原理-显存怎么算",
+          "kind": "rel",
+          "label": "KV 跨实例传输是新代价"
+        },
+        {
+          "s": "aiinfra:flashattention-为什么快",
+          "t": "aiinfra:cuda-的存储层级和共享内存-什么是-bank-conflict",
+          "kind": "rel",
+          "label": "分块驻留 SRAM 流式计算"
+        },
+        {
+          "s": "aiinfra:量化-gptq-/-awq-/-gguf-怎么比",
+          "t": "aiinfra:kv-cache-的原理-显存怎么算",
+          "kind": "rel",
+          "label": "权重与 KV 是两条量化战线"
+        },
+        {
+          "s": "aiinfra:推理性能怎么评测-指标体系",
+          "t": "aiinfra:llm-推理为什么分-prefill-和-decode-两阶段",
+          "kind": "rel",
+          "label": "TTFT/TPOT 分阶段归因"
+        },
+        {
+          "s": "aiinfra:训练侧和推理侧的优化关注点有什么不同",
+          "t": "aiinfra:推理性能怎么评测-指标体系",
+          "kind": "rel",
+          "label": "指标体系各有一套"
+        },
+        {
+          "s": "aiinfra:vllm-/-tensorrt-llm-/-sglang-/-llama.cpp-怎么定位选型",
+          "t": "aiinfra:pagedattention-/-vllm-解决了什么问题",
+          "kind": "rel",
+          "label": "vLLM 的立身之本"
+        },
+        {
+          "s": "aiinfra:训练侧和推理侧的优化关注点有什么不同",
+          "t": "aiinfra:vllm-/-tensorrt-llm-/-sglang-/-llama.cpp-怎么定位选型",
+          "kind": "rel",
+          "label": "选型要分训推场景"
         }
       ],
       "warnings": []

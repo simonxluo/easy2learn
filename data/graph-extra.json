@@ -107,6 +107,41 @@
           "s": "线程同步方式",
           "t": "死锁的四个必要条件",
           "label": "用锁不当的后果"
+        },
+        {
+          "s": "fork 的过程",
+          "t": "缺页中断的过程",
+          "label": "COW 靠缺页异常实现"
+        },
+        {
+          "s": "fork 的过程",
+          "t": "mmap 的原理",
+          "label": "进程地址空间复制的落点"
+        },
+        {
+          "s": "CPU 缓存与伪共享",
+          "t": "原子操作是如何实现的",
+          "label": "缓存一致性是原子的地基"
+        },
+        {
+          "s": "条件变量为什么要配合 mutex",
+          "t": "线程同步方式有哪些",
+          "label": "条件变量的全景位置"
+        },
+        {
+          "s": "malloc 的底层实现",
+          "t": "虚拟内存的作用",
+          "label": "堆是地址空间里的映射"
+        },
+        {
+          "s": "中断和软中断",
+          "t": "epoll 和 select",
+          "label": "网络包从软中断到 epoll"
+        },
+        {
+          "s": "用户态和内核态",
+          "t": "零拷贝技术",
+          "label": "减少穿越边界是共同目标"
         }
       ],
       "nodes": []
@@ -217,6 +252,21 @@
           "s": "C++ ABI",
           "t": "静态链接 vs 动态链接",
           "label": "链接视角的 ABI"
+        },
+        {
+          "s": "四种 cast",
+          "t": "虚函数是怎么实现的",
+          "label": "dynamic_cast 走虚表 RTTI"
+        },
+        {
+          "s": "菱形继承",
+          "t": "含虚函数的对象内存布局",
+          "label": "都是对象布局问题"
+        },
+        {
+          "s": "unordered_map 的底层实现",
+          "t": "map 和 unordered_map 的区别",
+          "label": "哈希表深挖"
         }
       ],
       "nodes": []
@@ -327,6 +377,81 @@
           "s": "工业化生产",
           "t": "岗位到底是做什么的",
           "label": "业务认知建立在岗位理解上"
+        }
+      ],
+      "nodes": []
+    },
+    "aiinfra": {
+      "edges": [
+        {
+          "s": "GPU 和 CPU 的本质区别",
+          "t": "SM、Warp、SIMT",
+          "label": "架构差异落到执行单元"
+        },
+        {
+          "s": "Warp 分化",
+          "t": "SM、Warp、SIMT",
+          "label": "SIMT 同步执行的代价"
+        },
+        {
+          "s": "存储层级和共享内存",
+          "t": "算子融合",
+          "label": "中间结果留在片上是共同主题"
+        },
+        {
+          "s": "Prefill 和 Decode",
+          "t": "KV Cache",
+          "label": "Decode 步步读 KV"
+        },
+        {
+          "s": "KV Cache 的原理",
+          "t": "PagedAttention",
+          "label": "分页解决 KV 显存碎片"
+        },
+        {
+          "s": "Continuous Batching",
+          "t": "PagedAttention",
+          "label": "vLLM 的显存+调度双支柱"
+        },
+        {
+          "s": "Prefill 和 Decode",
+          "t": "PD 分离",
+          "label": "两阶段资源画像相反"
+        },
+        {
+          "s": "PD 分离",
+          "t": "KV Cache",
+          "label": "KV 跨实例传输是新代价"
+        },
+        {
+          "s": "FlashAttention",
+          "t": "存储层级和共享内存",
+          "label": "分块驻留 SRAM 流式计算"
+        },
+        {
+          "s": "量化：GPTQ",
+          "t": "KV Cache 的原理",
+          "label": "权重与 KV 是两条量化战线"
+        },
+        {
+          "s": "推理性能怎么评测",
+          "t": "Prefill 和 Decode",
+          "label": "TTFT/TPOT 分阶段归因"
+        },
+        {
+          "s": "训练侧和推理侧",
+          "t": "推理性能怎么评测",
+          "label": "指标体系各有一套"
+        },
+        {
+          "s": "怎么定位选型",
+          "t": "PagedAttention",
+          "label": "vLLM 的立身之本"
+        },
+        {
+          "s": "训练侧和推理侧",
+          "t": "怎么定位选型",
+          "label": "选型要分训推场景"
         }
       ],
       "nodes": []
