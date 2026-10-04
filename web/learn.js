@@ -258,7 +258,10 @@ function scrollToCard(index, smooth = true) {
   const el = cardEls()[index]
   if (!el) return
   el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', inline: 'center', block: 'nearest' })
-  renderCrumb() // 程序化切卡（按钮/目录）不必然触发 scroll 事件守卫，这里兜底刷新
+  renderCrumb()
+  // 直接同步目录高亮，不依赖 scroll 事件追平（平滑动画中事件有延迟，
+  // 某些环境甚至不派发——高亮状态必须由这次操作自己决定）
+  updateTocActive()
 }
 
 function onSlideScroll() {

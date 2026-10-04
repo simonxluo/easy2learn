@@ -220,7 +220,7 @@ a.ghost { display: inline-block; }
 .legend-item i { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
 .legend-item .count { color: var(--muted); font-size: 12px; margin-left: auto; }
 
-#view-graph { display: flex; flex-direction: column; height: calc(100vh - 41px); }
+#view-graph { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 #graph-wrap { flex: 1 1 55%; min-height: 260px; position: relative; border-bottom: 1px solid var(--border); }
 .kgraph-canvas { position: absolute; inset: 0; cursor: grab; }
 .kgraph-canvas:active { cursor: grabbing; }
@@ -242,14 +242,19 @@ a.ghost { display: inline-block; }
 #detail-body h3 { margin-top: 4px; }
 
 /* 滑动阅读模式：左竖目录 + 右横滑卡 */
-#view-slide { display: flex; flex-direction: row; height: calc(100vh - 41px); }
+#view-slide { display: flex; flex-direction: row; flex: 1; min-height: 0; }
 .slide-toc {
   display: flex; flex-direction: column; align-items: stretch; gap: 2px;
-  width: clamp(150px, 17vw, 230px); flex-shrink: 0;
-  overflow-y: auto; padding: 8px 7px 16px;
+  width: 210px; flex-shrink: 0;   /* 固定宽度，不随窗口挤压 */
+  height: 100%;                    /* 固定高度 = 滑动区等高 */
+  overflow-y: auto; overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  padding: 8px 7px 16px;
   border-right: 1px solid var(--border); background: var(--bg2);
   scrollbar-width: thin;
 }
+/* 关键：条目不允许被 flex 压扁（否则内容多时每项被挤窄而不是出滚动条） */
+.toc-group, .toc-item { flex-shrink: 0; }
 .toc-group {
   font-size: 12px; color: var(--accent); font-weight: 600;
   padding: 9px 9px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -257,13 +262,15 @@ a.ghost { display: inline-block; }
 }
 .toc-item {
   background: var(--bg3); color: var(--muted); border: 1px solid var(--border);
-  border-radius: 8px; padding: 5px 10px; font-size: 12.5px; cursor: pointer;
+  border-radius: 8px; padding: 6px 10px; font-size: 12.5px; cursor: pointer;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;
+  line-height: 1.4; min-height: 16px;
 }
 .toc-item:hover { color: var(--fg); }
 .toc-item.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .toc-item.done::before { content: "✓ "; color: var(--accent2); }
 .toc-item.active.done::before { color: #fff; }
+@media (max-width: 900px) { .slide-toc { width: 158px; } }
 
 .slide-viewport {
   flex: 1; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory;
