@@ -75,7 +75,7 @@ function applyView() {
   })
   $('#view-hint').textContent = graph
     ? '点击节点 → 下方看知识点内容；拖拽平移，滚轮/双指捏合缩放，右上 ⤢ 复位'
-    : '← → 方向键或滑动切换知识卡；上方目录点击跳转'
+    : '← → 方向键或横向滑动切卡；左侧竖排目录点击跳转'
   $('#btn-prev').textContent = graph ? '← 上一节' : '← 上一张'
   $('#btn-next').textContent = graph ? '下一节 →' : '下一张 →'
   if (graph) {
@@ -245,7 +245,8 @@ function updateTocActive() {
     b.classList.toggle('active', Number(b.dataset.goto) === store.slideIndex)
   })
   const cur = document.querySelector('.toc-item.active')
-  if (cur) cur.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+  // 目录是竖排侧栏：block:'nearest' 让当前项在目录里纵向滚入视野
+  if (cur) cur.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
 }
 
 /* ================= 交互绑定 ================= */

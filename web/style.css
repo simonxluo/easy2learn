@@ -266,33 +266,41 @@ a.ghost { display: inline-block; }
 #detail-body { max-width: 860px; }
 #detail-body h3 { margin-top: 4px; }
 
-/* 滑动阅读模式 */
-#view-slide { display: flex; flex-direction: column; height: calc(100vh - 41px); }
+/* 滑动阅读模式：左竖目录 + 右横滑卡 */
+#view-slide { display: flex; flex-direction: row; height: calc(100vh - 41px); }
 .slide-toc {
-  display: flex; align-items: center; gap: 4px; overflow-x: auto; padding: 8px 16px;
-  border-bottom: 1px solid var(--border); background: var(--bg2);
-  scrollbar-width: thin; flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: stretch; gap: 2px;
+  width: clamp(150px, 17vw, 230px); flex-shrink: 0;
+  overflow-y: auto; padding: 8px 7px 16px;
+  border-right: 1px solid var(--border); background: var(--bg2);
+  scrollbar-width: thin;
 }
 .toc-group {
-  font-size: 12px; color: var(--accent); font-weight: 600; padding: 2px 8px 2px 12px;
-  white-space: nowrap; position: sticky; left: 0; background: var(--bg2);
+  font-size: 12px; color: var(--accent); font-weight: 600;
+  padding: 9px 9px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  position: sticky; top: 0; background: var(--bg2); z-index: 1;
 }
 .toc-item {
   background: var(--bg3); color: var(--muted); border: 1px solid var(--border);
-  border-radius: 999px; padding: 3px 11px; font-size: 12.5px; cursor: pointer; white-space: nowrap;
+  border-radius: 8px; padding: 5px 10px; font-size: 12.5px; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;
 }
 .toc-item:hover { color: var(--fg); }
 .toc-item.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .toc-item.done::before { content: "✓ "; color: var(--accent2); }
 .toc-item.active.done::before { color: #fff; }
 
-.slide-viewport { flex: 1; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; }
+.slide-viewport {
+  flex: 1; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory;
+  container-type: inline-size; /* 卡片宽度按可视宽度计，扣除目录后不溢出 */
+}
 .slide-track {
   display: flex; gap: 18px; padding: 22px 32px; height: 100%; align-items: stretch;
   width: max-content;
 }
 .slide-card {
   scroll-snap-align: center; width: min(760px, 82vw); flex-shrink: 0;
+  width: min(760px, 88cqw); /* 支持 cqw 的浏览器按滑动区实际宽度算 */
   background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 20px 26px; overflow-y: auto; scrollbar-width: thin;
 }
