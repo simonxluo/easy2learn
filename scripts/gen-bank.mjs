@@ -603,7 +603,10 @@ for (let i = 0; i < bank.questions.length; i++) {
 
 const out = path.join(ROOT, 'data', 'bank.json')
 fs.mkdirSync(path.dirname(out), { recursive: true })
-fs.writeFileSync(out, JSON.stringify(bank, null, 2) + '\n', 'utf8')
+// 原子写盘（tmp+rename，与 saveBank 一致）：写一半中断不会留下截断 JSON 触发 watcher 报错
+const tmp = `${out}.tmp`
+fs.writeFileSync(tmp, JSON.stringify(bank, null, 2) + '\n', 'utf8')
+fs.renameSync(tmp, out)
 const byType = {}
 for (const q of bank.questions) byType[q.type] = (byType[q.type] || 0) + 1
 console.log(`bank.json written: ${bank.questions.length} questions`, byType)

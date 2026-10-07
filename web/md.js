@@ -3,11 +3,20 @@ export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 }
 
+/** 链接 href 白名单：只放行 http(s)/mailto/站内相对与锚点，拦下 javascript: 等危险 scheme */
+function safeHref(href) {
+  const h = String(href).trim()
+  return /^(https?:\/\/|mailto:|\/|#|\.\.?(\/|$))/i.test(h) ? h : null
+}
+
 function inlineMd(s) {
   return esc(s)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, text, href) => {
+      const h = safeHref(href)
+      return h ? `<a href="${h}" target="_blank" rel="noopener">${text}</a>` : `<span>${text}</span>`
+    })
 }
 
 export function renderMd(md) {
@@ -38,6 +47,7 @@ export function renderMd(md) {
     if (inCode) { out.push(esc(line)); continue }
     if (/^\s*\|.*\|\s*$/.test(line)) { closeList(); tableBuf.push(line); continue }
     flushTable()
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { closeList(); out.push('<hr>'); continue } // 水平线
     const h = /^(#{1,6})\s+(.*)$/.exec(line)
     if (h) { closeList(); out.push(`<h${h[1].length}>${inlineMd(h[2])}</h${h[1].length}>`); continue }
     const bq = /^>\s?(.*)$/.exec(line)

@@ -1,5 +1,5 @@
 /** easy2learn 工具定义：easy2learn_start / easy2learn_bank / easy2learn_graph / easy2learn_health */
-import { BankError, validateQuestion } from './bank.js'
+import { BankError, nextId, validateQuestion } from './bank.js'
 import {
   GraphError,
   appendExtraEdge,
@@ -167,10 +167,7 @@ export function buildTools(config) {
           }
           return mutateBank((bank) => {
             const q = validateQuestion(args.question, bank)
-            const ids = bank.questions.map((x) => x.id)
-            let n = ids.length + 1
-            while (ids.includes(`q${String(n).padStart(3, '0')}`)) n++
-            q.id = `q${String(n).padStart(3, '0')}`
+            q.id = nextId(bank) // 与 HTTP API 同策略（max+1），避免两套编号撞 id
             bank.questions.push(q)
             return { id: q.id, total: bank.questions.length }
           })
@@ -325,12 +322,23 @@ export function buildTools(config) {
           const node = topic.nodes.find((n) => n.id === id)
           if (!node) throw new GraphError(`节点不存在: ${id}`)
           const patch = {}
-          if (str(args, 'nodeLabel')) patch.label = str(args, 'nodeLabel')
-          if (str(args, 'content')) patch.content = str(args, 'content')
-          if (str(args, 'kind')) patch.kind = str(args, 'kind')
-          if (str(args, 'chapter')) {
-            const name = str(args, 'chapter')
-            patch.chapter = name // normalizeGraph/前端按名称或 id 匹配；regen 时 ensureChapter 兜底
+          // 参数用 !== undefined 判断（str() 的空串是 falsy 会吞掉"清空"操作）
+          if (args.nodeLabel !== undefined) {
+            const label = str(args, 'nodeLabel')
+            if (!label) throw new GraphError('nodeLabel 不能为空')
+            patch.label = label
+          }
+          if (args.content !== undefined) patch.content = str(args, 'content') // 空串 = 清空内容
+          if (args.kind !== undefined) {
+            const kind = str(args, 'kind')
+            if (!['qa', 'concept', 'code'].includes(kind)) throw new GraphError('kind 必须是 qa/concept/code')
+            patch.kind = kind
+          }
+          if (args.chapter !== undefined) {
+            const name = str(args, 'chapter') || 'other'
+            // 目标章节已存在 → 用它的 slug id（存名字会让节点从滑动目录分组里消失）；新章节由下方兜底创建
+            const chap = topic.chapters.find((c) => c.name === name || c.id === name)
+            patch.chapter = chap ? chap.id : name
           }
           // 手工节点同步回 extra（笔记节点的内容以笔记为准，不回写）
           const extra = readExtra(live.extraPath)

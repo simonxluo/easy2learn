@@ -193,12 +193,7 @@ button.self-bad { border-color: var(--danger); color: var(--danger); }
 body.learn #topbar { position: sticky; top: 0; background: var(--bg); z-index: 5; }
 .topbar-actions { display: inline-flex; gap: 6px; align-items: center; }
 #crumb { font-size: 13.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
-.learn-doc h2 {
-  font-size: 19px; margin: 30px 0 12px; padding-top: 14px; border-top: 1px dashed var(--border);
-  scroll-margin-top: 64px;
-}
-.learn-doc h3 { font-size: 16px; color: var(--accent); margin: 22px 0 8px; scroll-margin-top: 64px; }
-.learn-doc pre { margin: 10px 0; }
+button:disabled { opacity: .55; cursor: not-allowed; }
 .sec-mark {
   float: right; background: transparent; border: 1px solid var(--border); color: var(--muted);
   font-size: 12px; padding: 3px 10px; border-radius: 999px; cursor: pointer;

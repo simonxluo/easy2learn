@@ -71,7 +71,16 @@ export function normalizeBank(bank) {
   out.notesRoots = Array.isArray(bank.notesRoots)
     ? bank.notesRoots.filter((r) => typeof r === 'string')
     : []
-  out.questions = Array.isArray(bank.questions) ? bank.questions.filter(Boolean) : []
+  // 加载归一化：磁盘上 multi 的 answer 若是乱序/字典序（历史数据），统一为数值升序去重，
+  // 与 validateQuestion 的输出保持一致，前端逐位比较才不会误判
+  out.questions = (Array.isArray(bank.questions) ? bank.questions : [])
+    .filter(Boolean)
+    .map((q) => {
+      if (q && q.type === 'multi' && Array.isArray(q.answer) && q.answer.every((v) => typeof v === 'number' && Number.isInteger(v))) {
+        return { ...q, answer: [...new Set(q.answer)].sort((a, b) => a - b) }
+      }
+      return q
+    })
   return out
 }
 
@@ -131,12 +140,14 @@ export function validateQuestion(input, bank) {
       q.answer = idx
     } else {
       const list = Array.isArray(input.answer) ? input.answer : [input.answer]
-      const idxs = list.map((a) => normalizeOptionIndex(a, options.length)).sort()
+      const idxs = list.map((a) => normalizeOptionIndex(a, options.length)).sort((a, b) => a - b)
       if (!idxs.length || idxs.some((i) => i < 0)) throw new BankError('multi 的 answer 必须是非空下标数组')
       q.answer = [...new Set(idxs)]
     }
   } else if (type === 'judge') {
-    q.answer = typeof input.answer === 'string' ? input.answer.trim() === '对' || input.answer.trim() === 'true' : Boolean(input.answer)
+    // 字符串答案大小写不敏感：TRUE/True/true 与 对 都视为真
+    const s = typeof input.answer === 'string' ? input.answer.trim().toLowerCase() : null
+    q.answer = s === null ? Boolean(input.answer) : s === '对' || s === 'true'
   } else if (type === 'qa') {
     const a = String(input.answer ?? '').trim()
     if (!a) throw new BankError('问答题 answer（参考答案）不能为空')

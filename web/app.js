@@ -4,7 +4,9 @@ import { esc, renderMd } from './md.js'
 const $ = (sel) => document.querySelector(sel)
 
 const TYPE_LABEL = { single: '单选', multi: '多选', judge: '判断', qa: '问答', code: '编程' }
-const LETTERS = 'ABCDEFGH'.split('')
+const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
+// 选项标号：A..Z 之后退化为数字（第 27 项起），不再出现 "undefined."
+const optLabel = (i) => (i < LETTERS.length ? LETTERS[i] : String(i + 1))
 
 const store = {
   state: null,          // /api/state
@@ -12,7 +14,9 @@ const store = {
   idx: 0,
   progress: loadProgress(),
   revealed: new Set(),  // 本会话已看解析的题
+  randomOrder: null,    // 随机模式的洗牌缓存：同一次筛选内保持稳定，"上一题"才不会失忆
 }
+let noteSeq = 0 // 笔记弹窗请求序号：乱序返回的旧响应直接丢弃
 
 function loadProgress() {
   try { return JSON.parse(localStorage.getItem('e2l.progress') || '{}') } catch { return {} }
@@ -46,11 +50,18 @@ function visibleQuestions() {
   if (type !== 'all') qs = qs.filter((q) => q.type === type)
   if (mode === 'wrong') qs = qs.filter((q) => store.progress[q.id]?.correct === false)
   if (mode === 'random') {
-    qs = [...qs]
-    for (let i = qs.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [qs[i], qs[j]] = [qs[j], qs[i]]
+    // 洗牌只在"题目集合/题库版本变化"时重算一次并缓存，翻页/上一题期间顺序稳定
+    const key = `${topic}|${type}|${store.state.questions.length}|${store.state.meta?.updatedAt || ''}`
+    if (!store.randomOrder || store.randomOrder.key !== key) {
+      const arr = [...qs]
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]]
+      }
+      store.randomOrder = { key, ids: arr.map((q) => q.id) }
     }
+    const byId = new Map(qs.map((q) => [q.id, q]))
+    qs = store.randomOrder.ids.map((id) => byId.get(id)).filter(Boolean)
   }
   return qs
 }
@@ -140,7 +151,7 @@ function renderQuestion(card, q) {
   let body = ''
   if (q.type === 'single' || q.type === 'multi') {
     body = `<div class="opts">${q.options
-      .map((o, i) => `<label class="opt" data-i="${i}"><input type="${q.type === 'single' ? 'radio' : 'checkbox'}" name="opt" /><span class="label">${LETTERS[i]}.</span><span class="md">${renderMd(o)}</span></label>`)
+      .map((o, i) => `<label class="opt" data-i="${i}"><input type="${q.type === 'single' ? 'radio' : 'checkbox'}" name="opt" /><span class="label">${optLabel(i)}.</span><span class="md">${renderMd(o)}</span></label>`)
       .join('')}</div>`
   } else if (q.type === 'judge') {
     body = `<div class="judge-row">
@@ -242,6 +253,8 @@ function bindQuestion(card, q) {
 }
 
 function submitChoice(q, verdict, explain) {
+  const card = $('#qcard')
+  if (card?.dataset.locked) return // 已提交锁定，防止反复改判覆盖进度
   let picked
   if (q.type === 'single') {
     const sel = document.querySelector('input[name="opt"]:checked')
@@ -262,7 +275,10 @@ function submitChoice(q, verdict, explain) {
     picked = sel.dataset.v === 'true'
     mark(q, picked === q.answer)
     sel.classList.add(picked === q.answer ? 'correct' : 'wrong')
+    // 判断题与选择/多选一致：提交后锁定，不能重复换选
+    document.querySelectorAll('.judge-row .opt').forEach((o) => { o.style.pointerEvents = 'none'; o.style.opacity = o.dataset.selected === '1' ? '' : '.5' })
   }
+  if (card) card.dataset.locked = '1'
   showExplain(q, explain, picked)
 }
 
@@ -293,7 +309,7 @@ function showExplain(q, explain) {
   if (q.type === 'qa' || q.type === 'code') {
     if (q.answer) parts.push(`<h3>参考答案</h3><div class="ref md">${renderMd(String(q.answer))}</div>`)
   } else {
-    const ans = Array.isArray(q.answer) ? q.answer.map((i) => LETTERS[i]).join('、') : q.type === 'judge' ? (q.answer ? '对' : '错') : LETTERS[q.answer]
+    const ans = Array.isArray(q.answer) ? q.answer.map((i) => optLabel(i)).join('、') : q.type === 'judge' ? (q.answer ? '对' : '错') : optLabel(q.answer)
     parts.push(`<h3>正确答案</h3><div class="ref"><b style="color:var(--accent2)">${esc(ans)}</b></div>`)
   }
   explain.innerHTML = `<div class="result">${parts.join('')}</div>`
@@ -318,6 +334,13 @@ function revealQa(q, explain) {
 async function runCode(q) {
   const result = $('#run-result')
   const code = $('#code-input').value
+  // 防重复提交：判题期间禁用所有"运行测试"按钮（异步判题虽不阻塞服务器，但连点会排队占资源）
+  const btns = [...document.querySelectorAll('[data-act="run"]')]
+  const lock = (on) => btns.forEach((b) => {
+    b.disabled = on
+    b.textContent = on ? '⏳ 判题中…' : '▶ 运行测试'
+  })
+  lock(true)
   result.innerHTML = `<p style="color:var(--muted)">⏳ 本地编译运行中…</p>`
   try {
     const res = await fetch('/api/run', {
@@ -349,6 +372,8 @@ async function runCode(q) {
     mark(q, data.allPass)
   } catch (err) {
     result.innerHTML = `<div class="compile-err">运行失败: ${esc(err.message)}</div>`
+  } finally {
+    lock(false)
   }
 }
 
@@ -402,6 +427,7 @@ function bindStatic() {
 async function openNote(el) {
   if (!el) return
   const p = el.dataset.note
+  const seq = ++noteSeq
   $('#note-title').textContent = `${el.dataset.name || ''} 笔记`
   $('#note-body').innerHTML = '<p style="color:var(--muted)">加载中…</p>'
   $('#note-modal').classList.remove('hidden')
@@ -409,8 +435,10 @@ async function openNote(el) {
     const res = await fetch(`/api/notes?p=${encodeURIComponent(p)}`)
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || res.status)
+    if (seq !== noteSeq) return // 用户已点开另一篇笔记，丢弃过期响应
     $('#note-body').innerHTML = renderMd(data.text)
   } catch (err) {
+    if (seq !== noteSeq) return
     $('#note-body').innerHTML = `<p style="color:var(--danger)">读取失败: ${esc(err.message)}</p>`
   }
 }

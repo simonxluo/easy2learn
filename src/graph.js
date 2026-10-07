@@ -35,7 +35,7 @@ export class GraphError extends Error {
 }
 
 export function emptyGraph() {
-  return { schema: 1, generatedAt: new Date().toISOString(), engine: 'builtin-force', topics: [] }
+  return { schema: 1, generatedAt: new Date().toISOString(), engine: 'builtin-force', topics: [], warnings: [] }
 }
 
 export function loadGraph(graphPath) {
@@ -57,7 +57,14 @@ export function normalizeGraph(input) {
   out.engine = String(input.engine || out.engine)
   const seenTopic = new Set()
   for (const t of Array.isArray(input.topics) ? input.topics : []) {
-    if (!t || typeof t.id !== 'string' || !t.nodes) continue
+    if (!t || typeof t.id !== 'string') {
+      out.warnings.push(`忽略无法识别的 topic: ${JSON.stringify(t?.id ?? t)?.slice(0, 60)}`)
+      continue
+    }
+    if (!t.nodes) {
+      out.warnings.push(`topic ${t.id} 缺少 nodes，整科被忽略`)
+      continue
+    }
     if (seenTopic.has(t.id)) continue
     seenTopic.add(t.id)
     const topic = {
@@ -87,7 +94,7 @@ export function normalizeGraph(input) {
     const seenEdge = new Set()
     for (const e of Array.isArray(t.edges) ? t.edges : []) {
       if (!e || !ids.has(e.s) || !ids.has(e.t) || e.s === e.t) continue // 丢弃悬垂边
-      const k = `${e.s}>${e.t}`
+      const k = e.s > e.t ? `${e.s}>${e.t}` : `${e.t}>${e.s}` // 方向无关的去重键：互逆边只保留先出现的一条
       if (seenEdge.has(k)) continue
       seenEdge.add(k)
       topic.edges.push({ s: e.s, t: e.t, kind: e.kind === 'rel' ? 'rel' : 'seq', label: String(e.label || '') })
@@ -203,11 +210,16 @@ export function parseNote(md) {
   return { chapters, nodes }
 }
 
-/** id 精确匹配 → label 唯一子串匹配 */
+/** id 精确匹配 → label 全等匹配 → label 唯一子串匹配；子串多匹配时抛错（静默取首个曾导致策展边连错节点） */
 export function findNodeId(nodes, frag) {
   const byId = nodes.find((n) => n.id === frag)
   if (byId) return byId.id
+  const exact = nodes.find((n) => n.label === frag)
+  if (exact) return exact.id
   const hits = nodes.filter((n) => n.label.includes(frag))
+  if (hits.length > 1) {
+    throw new GraphError(`「${frag}」匹配到 ${hits.length} 个节点（${hits.slice(0, 3).map((n) => n.label).join(' / ')}${hits.length > 3 ? ' …' : ''}），请用更长的子串或节点 id`)
+  }
   return hits.length ? hits[0].id : null
 }
 
@@ -281,7 +293,8 @@ function buildTopic(topicId, name, note, md, extra) {
 
   const has = new Set()
   const addEdge = (s, tid2, kind, label) => {
-    if (!s || !tid2 || s === tid2 || has.has(s + '>' + tid2)) return
+    // 双向去重：同一对节点之间只画一条线（seq 链优先，反向重复的 rel 关联边丢弃）
+    if (!s || !tid2 || s === tid2 || has.has(s + '>' + tid2) || has.has(tid2 + '>' + s)) return
     has.add(s + '>' + tid2)
     t.edges.push({ s, t: tid2, kind, label })
   }
@@ -292,8 +305,14 @@ function buildTopic(topicId, name, note, md, extra) {
     prev = n
   }
   for (const e of extra?.edges || []) {
-    const s = findNodeId(t.nodes, e.s)
-    const d = findNodeId(t.nodes, e.t)
+    let s = null, d = null
+    try {
+      s = findNodeId(t.nodes, e.s)
+      d = findNodeId(t.nodes, e.t)
+    } catch (err) {
+      t.warnings.push(`${e.s} -> ${e.t} 端点歧义：${err.message}`)
+      continue
+    }
     if (s && d) addEdge(s, d, 'rel', e.label)
     else t.warnings.push(`${e.s} -> ${e.t} 未匹配`)
   }

@@ -71,6 +71,8 @@ export function registerAdapter(name, fn) {
 /** 把任意原始数据归一化为 Topic[]；不认识的数据形状 → 空数组（视图显示空态而不是崩溃） */
 export function adapt(raw) {
   if (!raw || typeof raw !== 'object') return []
+  // 已知 graph schema(1) 或"形状像 graph"（带 topics 数组，含未来未知版本）都宽容地走 graph 适配器；
+  // 真正的版本演进应注册新的具名适配器后在这里显式分派
   const name = String(raw.schema === 1 || (Array.isArray(raw.topics) && raw.topics.length) ? 'graph' : raw.schema || '')
   const fn = adapters.get(name)
   return fn ? fn(raw) : []
