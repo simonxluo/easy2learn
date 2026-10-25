@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "easy2learn",
+    "description": "DeepSeek Harness learning plugin: a local quiz web app (choice, Q&A, true/false, and coding questions + knowledge points) that the agent can edit in real time, with local judging and note integration."
+  }
+}

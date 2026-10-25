@@ -6,13 +6,15 @@
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "src",
     "web",
     "data",
     "cordis.patch.yml",
+    "locale/*.json",
     "README.md"
   ],
   "scripts": {

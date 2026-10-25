@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "easy2learn",
+    "description": "Plugin de aprendizaje para DeepSeek Harness: web local de ejercicios (opción múltiple, preguntas y respuestas, verdadero/falso y problemas de código + puntos de conocimiento) que el agente puede editar en tiempo real, con corrección local e integración con notas."
+  }
+}
