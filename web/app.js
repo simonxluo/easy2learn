@@ -37,8 +37,11 @@ async function boot() {
   connectSse()
 }
 
+/* 子路径部署（如 https://host/easy2learn/）时由 HTML 注入；根路径部署为空串 */
+const BASE = window.E2L_BASE || ''
+
 async function refreshState() {
-  const res = await fetch('/api/state')
+  const res = await fetch(BASE + '/api/state')
   if (!res.ok) throw new Error(`state ${res.status}`)
   store.state = await res.json()
 }
@@ -343,7 +346,7 @@ async function runCode(q) {
   lock(true)
   result.innerHTML = `<p style="color:var(--muted)">⏳ 本地编译运行中…</p>`
   try {
-    const res = await fetch('/api/run', {
+    const res = await fetch(BASE + '/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lang: q.code.lang, code, tests: q.code.tests }),
@@ -432,7 +435,7 @@ async function openNote(el) {
   $('#note-body').innerHTML = '<p style="color:var(--muted)">加载中…</p>'
   $('#note-modal').classList.remove('hidden')
   try {
-    const res = await fetch(`/api/notes?p=${encodeURIComponent(p)}`)
+    const res = await fetch(`${BASE}/api/notes?p=${encodeURIComponent(p)}`)
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || res.status)
     if (seq !== noteSeq) return // 用户已点开另一篇笔记，丢弃过期响应
@@ -462,7 +465,7 @@ function importDialog() {
   $('#import-go').addEventListener('click', async () => {
     try {
       const body = JSON.parse($('#import-json').value)
-      const res = await fetch('/api/questions', {
+      const res = await fetch(BASE + '/api/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -480,7 +483,7 @@ function importDialog() {
 
 /* ---------- SSE 实时更新 ---------- */
 function connectSse() {
-  const es = new EventSource('/api/events')
+  const es = new EventSource(BASE + '/api/events')
   es.addEventListener('hello', () => {
     $('#conn-dot').className = 'dot on'
     $('#live-badge').classList.remove('hidden')

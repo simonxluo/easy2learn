@@ -4,7 +4,14 @@
  * 渲染：脏标记驱动 —— 力导向收敛(alpha→0)后，平移缩放仍会即时重绘。
  * 接口刻意对齐 cytoscape 风格，未来可无缝替换 web/vendor/ 下的真库。
  */
-const PALETTE = ['#5b8cff', '#7ee0a3', '#ffc86b', '#ff8fab', '#b28dff', '#6fd6e8', '#f2a06b', '#9dd65e']
+const PALETTE = ['#007aff', '#34c759', '#ff9500', '#ff2d55', '#af52de', '#5ac8fa', '#ff3b30', '#5856d6']
+/** 当前是否深色外观：手动偏好（html.dark / html.light）优先，否则跟随系统 */
+const prefersDark = () => {
+  const c = document.documentElement.classList
+  if (c.contains('dark')) return true
+  if (c.contains('light')) return false
+  return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+}
 
 export class KGraph {
   constructor(container, opts = {}) {
@@ -320,6 +327,7 @@ export class KGraph {
     const v = this.view
     const sel = this.selected
     const nbrs = sel ? this._neighbors(sel) : null
+    const dark = prefersDark()
 
     // 边
     for (const e of this.edges) {
@@ -330,21 +338,25 @@ export class KGraph {
       ctx.moveTo(v.x + a.x * v.k, v.y + a.y * v.k)
       ctx.lineTo(v.x + b.x * v.k, v.y + b.y * v.k)
       if (e.kind === 'rel') {
-        ctx.strokeStyle = hot ? 'rgba(126,224,163,0.9)' : 'rgba(126,224,163,0.22)'
+        ctx.strokeStyle = hot
+          ? (dark ? 'rgba(48,209,88,0.95)' : 'rgba(52,199,89,0.9)')
+          : (dark ? 'rgba(48,209,88,0.30)' : 'rgba(52,199,89,0.35)')
         ctx.lineWidth = hot ? 2 : 1.2
       } else {
-        ctx.strokeStyle = hot ? 'rgba(91,140,255,0.8)' : 'rgba(139,147,163,0.16)'
+        ctx.strokeStyle = hot
+          ? (dark ? 'rgba(10,132,255,0.9)' : 'rgba(0,122,255,0.75)')
+          : (dark ? 'rgba(152,152,157,0.22)' : 'rgba(60,60,67,0.18)')
         ctx.lineWidth = hot ? 1.8 : 1
       }
       ctx.stroke()
       // 关联边标签（仅选中时显示，避免杂乱）
       if (hot && e.kind === 'rel' && e.label) {
         const mx = v.x + (a.x + b.x) / 2 * v.k, my = v.y + (a.y + b.y) / 2 * v.k
-        ctx.font = '10px sans-serif'
+        ctx.font = '10px -apple-system, PingFang SC, sans-serif'
         const tw = ctx.measureText(e.label).width
-        ctx.fillStyle = 'rgba(11,13,17,0.85)'
+        ctx.fillStyle = dark ? 'rgba(28,28,30,0.92)' : 'rgba(255,255,255,0.92)'
         ctx.fillRect(mx - tw / 2 - 3, my - 7, tw + 6, 13)
-        ctx.fillStyle = '#9fe8bd'
+        ctx.fillStyle = dark ? '#30d158' : '#248a3d'
         ctx.textAlign = 'center'
         ctx.fillText(e.label, mx, my + 3)
       }
@@ -354,24 +366,24 @@ export class KGraph {
     for (const n of this.nodes) {
       const sx = v.x + n.x * v.k, sy = v.y + n.y * v.k
       const dim = sel && n.id !== sel && !nbrs?.has(n.id)
-      const color = this.chapterColors.get(n.chapter) || '#8b93a3'
+      const color = this.chapterColors.get(n.chapter) || (dark ? '#98989d' : '#8e8e93')
       ctx.globalAlpha = dim ? 0.25 : 1
       if (n.id === sel) {
         ctx.beginPath()
         ctx.arc(sx, sy, n.r + 5, 0, Math.PI * 2)
-        ctx.strokeStyle = '#e6e9ef'
+        ctx.strokeStyle = dark ? '#0a84ff' : '#007aff'
         ctx.lineWidth = 2
         ctx.stroke()
       }
       ctx.beginPath()
       ctx.arc(sx, sy, n.r, 0, Math.PI * 2)
-      ctx.fillStyle = n.done ? color : 'rgba(22,26,33,0.95)'
+      ctx.fillStyle = n.done ? color : (dark ? 'rgba(28,28,30,0.95)' : 'rgba(255,255,255,0.96)')
       ctx.fill()
       ctx.strokeStyle = color
       ctx.lineWidth = 2
       ctx.stroke()
       if (n.done) {
-        ctx.fillStyle = '#0f1115'
+        ctx.fillStyle = '#ffffff'
         ctx.font = `bold ${Math.max(9, n.r * 0.9)}px sans-serif`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
@@ -380,9 +392,11 @@ export class KGraph {
       }
       // 标签
       const label = n.label.length > 14 ? `${n.label.slice(0, 13)}…` : n.label
-      ctx.font = '11px -apple-system, PingFang SC, sans-serif'
+      ctx.font = (n.id === sel ? '600 ' : '') + '11px -apple-system, PingFang SC, sans-serif'
       ctx.textAlign = 'center'
-      ctx.fillStyle = n.id === sel ? '#e6e9ef' : '#aab2c2'
+      ctx.fillStyle = n.id === sel
+        ? (dark ? '#0a84ff' : '#007aff')
+        : (dark ? '#98989d' : '#6e6e73')
       ctx.fillText(label, sx, sy + n.r + 14)
       ctx.globalAlpha = 1
     }

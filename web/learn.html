@@ -4,7 +4,21 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>easy2learn · 知识图谱学习</title>
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="style.css" />
+  <script>window.E2L_BASE = "__E2L_BASE__".indexOf("__") === 0 ? "" : "__E2L_BASE__"</script>
+  <script>
+    /* 首屏应用外观偏好，防止主题闪烁（与 theme.js 共用 'e2l-theme' 键） */
+    (function () {
+      try {
+        var t = localStorage.getItem('e2l-theme')
+        var dark = t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches)
+        var light = t === 'light'
+        var c = document.documentElement.classList
+        if (dark) c.add('dark')
+        if (light) c.add('light')
+      } catch (e) { /* 隐私模式忽略 */ }
+    })()
+  </script>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='24' font-size='24'%3E%F0%9F%95%B8%EF%B8%8F%3C/text%3E%3C/svg%3E" />
 </head>
 <body class="learn">
@@ -38,6 +52,15 @@
         <h2>学习进度</h2>
         <div id="stats" class="stats"></div>
         <button id="reset-progress" class="ghost small">重置进度</button>
+      </section>
+
+      <section class="panel">
+        <h2>外观</h2>
+        <div class="seg mini" id="theme-toggle">
+          <button class="seg-btn" data-theme-opt="auto">自动</button>
+          <button class="seg-btn" data-theme-opt="light">浅色</button>
+          <button class="seg-btn" data-theme-opt="dark">深色</button>
+        </div>
       </section>
 
       <footer class="side-foot">
@@ -89,6 +112,7 @@
     </main>
   </div>
 
-  <script type="module" src="/learn.js"></script>
+  <script src="theme.js" defer></script>
+  <script type="module" src="learn.js"></script>
 </body>
 </html>

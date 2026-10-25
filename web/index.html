@@ -4,7 +4,21 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>easy2learn · 面经刷题</title>
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="style.css" />
+  <script>window.E2L_BASE = "__E2L_BASE__".indexOf("__") === 0 ? "" : "__E2L_BASE__"</script>
+  <script>
+    /* 首屏应用外观偏好，防止主题闪烁（与 theme.js 共用 'e2l-theme' 键） */
+    (function () {
+      try {
+        var t = localStorage.getItem('e2l-theme')
+        var dark = t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches)
+        var light = t === 'light'
+        var c = document.documentElement.classList
+        if (dark) c.add('dark')
+        if (light) c.add('light')
+      } catch (e) { /* 隐私模式忽略 */ }
+    })()
+  </script>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='24' font-size='24'%3E%F0%9F%93%98%3C/text%3E%3C/svg%3E" />
 </head>
 <body>
@@ -45,8 +59,17 @@
         <ul id="notes-list" class="notes-list"></ul>
       </section>
 
+      <section class="panel">
+        <h2>外观</h2>
+        <div class="seg mini" id="theme-toggle">
+          <button class="seg-btn" data-theme-opt="auto">自动</button>
+          <button class="seg-btn" data-theme-opt="light">浅色</button>
+          <button class="seg-btn" data-theme-opt="dark">深色</button>
+        </div>
+      </section>
+
       <footer class="side-foot">
-        <a class="ghost small btn-block" href="/learn.html" style="display:block;text-align:center;margin-bottom:6px;">📖 知识学习模式</a>
+        <a class="ghost small btn-block" href="learn.html" style="display:block;text-align:center;margin-bottom:6px;">📖 知识学习模式</a>
         <button id="btn-import" class="ghost small">＋ 导入题目(JSON)</button>
         <p class="hint">agent 可通过本地 API 实时增删改题目与前端</p>
       </footer>
@@ -71,6 +94,7 @@
     </div>
   </div>
 
-  <script type="module" src="/app.js"></script>
+  <script src="theme.js" defer></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

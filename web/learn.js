@@ -38,6 +38,9 @@ function neighborsOf(id) {
   return [...out]
 }
 
+/* 子路径部署（如 https://host/easy2learn/）时由 HTML 注入；根路径部署为空串 */
+const BASE = window.E2L_BASE || ''
+
 async function fetchJson(url) {
   const res = await fetch(url)
   const data = await res.json().catch(() => ({}))
@@ -46,7 +49,7 @@ async function fetchJson(url) {
 }
 
 async function loadTopics() {
-  const raw = await fetchJson('/api/graph')
+  const raw = await fetchJson(BASE + '/api/graph')
   const topics = adapt(raw)
   if (!topics.length) throw new Error('没有可识别的知识数据（schema 不支持或 topics 为空）')
   store.topics = topics
@@ -161,7 +164,7 @@ function renderLegend() {
   const t = topic()
   $('#legend').innerHTML = t.chapters
     .map((c) => {
-      const color = kg.chapterColors.get(c.id) || '#8b93a3'
+      const color = kg.chapterColors.get(c.id) || '#8e8e93'
       const inCh = units().filter((u) => u.chapter === c.id)
       const done = inCh.filter((u) => isLearned(u.id)).length
       return `<div class="legend-item"><i style="background:${color}"></i>${esc(c.name)} <span class="count">${done}/${inCh.length}</span></div>`
@@ -388,7 +391,7 @@ function refreshUI() {
 
 /* ================= SSE 实时更新 ================= */
 function connectSse() {
-  const es = new EventSource('/api/events')
+  const es = new EventSource(BASE + '/api/events')
   es.addEventListener('hello', () => {
     $('#conn-dot').className = 'dot on'
     $('#live-badge').classList.remove('hidden')
