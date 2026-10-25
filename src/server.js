@@ -308,6 +308,7 @@ async function handle(req, res, state, clients) {
       }
       return sendJson(res, 200, state.graph)
     }
+    if (req.method === 'GET' && p === '/api/notes/list') return handleNotesList(res, state)
     if (req.method === 'GET' && p === '/api/notes') return handleNotes(url, res, state)
     if (req.method === 'POST' && p === '/api/questions') {
       syncBankFromDisk(state)
@@ -408,6 +409,49 @@ function handleSse(req, res, clients) {
     clearInterval(ping)
     clients.delete(res)
   })
+}
+
+/** 列出笔记根目录下的全部 markdown（notes.html 侧栏导航用），带 handleNotes 同款 symlink 防护 */
+function handleNotesList(res, state) {
+  const rootDirs = state.bank.notesRoots.length ? state.bank.notesRoots.map((r) => path.resolve(state.root, r)) : [state.root]
+  let realRoots
+  try {
+    realRoots = rootDirs.map((r) => fs.realpathSync(r))
+  } catch {
+    return sendJson(res, 200, { roots: state.bank.notesRoots, total: 0, files: [] }) // 根目录不存在：返回空表而非报错
+  }
+  const underRoots = (f) => realRoots.some((r) => f === r || f.startsWith(r + path.sep))
+  const files = []
+  const seen = new Set()
+  const walk = (dir, depth) => {
+    if (depth > 3) return
+    let entries
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { return }
+    for (const e of entries) {
+      if (e.name.startsWith('.') || e.name === 'node_modules') continue
+      const full = path.join(dir, e.name)
+      if (e.isDirectory()) { walk(full, depth + 1); continue }
+      if (!e.isFile() || path.extname(e.name).toLowerCase() !== '.md') continue
+      try {
+        if (!underRoots(fs.realpathSync(full))) continue
+        const st = fs.statSync(full)
+        const rel = path.relative(state.root, full).split(path.sep).join('/')
+        if (seen.has(rel)) continue
+        seen.add(rel)
+        const slash = rel.lastIndexOf('/')
+        files.push({
+          path: rel,
+          dir: slash < 0 ? '' : rel.slice(0, slash),
+          name: (slash < 0 ? rel : rel.slice(slash + 1)).replace(/\.md$/i, ''),
+          bytes: st.size,
+          mtime: st.mtime.toISOString(),
+        })
+      } catch { /* 单个文件异常不影响整表 */ }
+    }
+  }
+  for (const r of rootDirs) walk(r, 0)
+  files.sort((a, b) => a.path.localeCompare(b.path, 'zh-Hans-CN'))
+  sendJson(res, 200, { roots: state.bank.notesRoots, total: files.length, files })
 }
 
 /** 读取本地 markdown 笔记：note 路径相对 root，notesRoots 是白名单目录前缀 */
