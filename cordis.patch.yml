@@ -8,6 +8,7 @@
 #       port: 8788          # 本地网页端口
 #       bankPath: data/bank.json   # 题库文件（相对插件目录或绝对路径）
 #       root: /path/to/workspace   # 笔记根目录（interview-prep 等挂在下面）
+#       autoStart: false    # 关闭「随宿主自启」，回到首次调用工具时再启动
 - insert:
     - id: tool-easy2learn
       name: easy2learn

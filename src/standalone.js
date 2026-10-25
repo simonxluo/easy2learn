@@ -3,7 +3,10 @@ import { resolveConfig } from './config.js'
 import { ensureServer } from './server.js'
 
 const port = Number(process.argv[2]) || undefined
-const config = resolveConfig(port ? { port } : {})
+const config = resolveConfig({
+  ...(port ? { port } : {}),
+  ...(process.env.E2L_BASE ? { basePath: process.env.E2L_BASE } : {}),
+})
 
 try {
   const status = await ensureServer(config)
@@ -12,6 +15,7 @@ try {
     process.exit(1)
   }
   console.log(`easy2learn 已启动: ${status.url}`)
+  if (config.basePath) console.log(`子路径前缀: ${config.basePath}`)
   console.log(`题库: ${config.bankPath}（${status.questions} 题）`)
   console.log('Ctrl+C 退出')
 } catch (err) {

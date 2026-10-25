@@ -19,6 +19,7 @@ import { GraphError, buildGraphFromNotes, loadGraph, saveGraph } from './graph.j
 import { availableLangs, runSubmission } from './runner.js'
 
 let current = null
+let starting = null // ensureServer 并发去重：宿主自启与工具调用同时到达时共享同一次启动
 
 /** 供工具直接读取当前服务状态（未启动返回 null） */
 export function getLiveState() {
@@ -74,23 +75,32 @@ export async function ensureServer(config) {
     }
     return serverStatus()
   }
-  // 端口上已有独立进程在服务（如 standalone 启动的）→ 直接复用
-  try {
-    const res = await fetch(`http://127.0.0.1:${config.port}/api/state`, { signal: AbortSignal.timeout(1500) })
-    if (res.ok) {
-      const state = await res.json()
-      return {
-        running: true,
-        port: config.port,
-        url: `http://127.0.0.1:${config.port}/`,
-        questions: state.questions?.length ?? 0,
-        topics: (state.topics || []).map((t) => t.id),
-        note: '检测到该端口已有 easy2learn 进程，直接复用（工具走 HTTP 或文件生效）',
-      }
+  if (starting) return starting
+  // 探测与启动整体包进共享 Promise：并发调用（自启 × 工具）只会 startServer 一次
+  starting = (async () => {
+    try {
+      // 端口上已有独立进程在服务（如 standalone 启动的）→ 直接复用
+      try {
+        const res = await fetch(`http://127.0.0.1:${config.port}/api/state`, { signal: AbortSignal.timeout(1500) })
+        if (res.ok) {
+          const state = await res.json()
+          return {
+            running: true,
+            port: config.port,
+            url: `http://127.0.0.1:${config.port}/`,
+            questions: state.questions?.length ?? 0,
+            topics: (state.topics || []).map((t) => t.id),
+            note: '检测到该端口已有 easy2learn 进程，直接复用（工具走 HTTP 或文件生效）',
+          }
+        }
+      } catch {}
+      await startServer(config)
+      return serverStatus()
+    } finally {
+      starting = null
     }
-  } catch {}
-  await startServer(config)
-  return serverStatus()
+  })()
+  return starting
 }
 
 export async function stopServer() {
@@ -265,9 +275,20 @@ function readBody(req, limit = 5 * 1024 * 1024) {
   })
 }
 
+/** 子路径部署（E2L_BASE）：请求路径剥掉前缀后走原有路由 */
+function stripBase(p, base) {
+  if (!base || !p.startsWith(base + '/')) return p
+  return p.slice(base.length) || '/'
+}
+
 async function handle(req, res, state, clients) {
   const url = new URL(req.url, `http://127.0.0.1:${state.port}`)
-  const p = url.pathname
+  const base = state.basePath || ''
+  if (base && url.pathname === base) {
+    res.writeHead(301, { Location: base + '/' + url.search })
+    return res.end()
+  }
+  const p = stripBase(url.pathname, base)
   try {
     if (req.method === 'GET' && p === '/api/events') return handleSse(req, res, clients)
     if (req.method === 'GET' && p === '/api/state') {
@@ -426,6 +447,10 @@ function handleStatic(p, res, state) {
     body = fs.readFileSync(file)
   } catch {
     return sendJson(res, 404, { error: 'not found' })
+  }
+  if (path.extname(file).toLowerCase() === '.html') {
+    // 向页面注入部署前缀：前端 fetch/EventSource 以此拼接（根路径部署替换为空串）
+    body = Buffer.from(body.toString('utf8').replaceAll('__E2L_BASE__', state.basePath || ''))
   }
   send(res, 200, body, {
     'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream',
