@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-10-07T02:15:12.840Z",
+  "generatedAt": "2026-10-24T06:32:13.026Z",
   "engine": "builtin-force",
   "topics": [
     {
@@ -2304,6 +2304,253 @@
           "t": "agent:agent-怎么评测-和单次-llm-调用的评测有什么不同",
           "kind": "rel",
           "label": "反思产出可评测轨迹"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "delta",
+      "name": "三角洲后台专项",
+      "note": "interview-prep/delta/三角洲后台专项.md",
+      "source": "notes",
+      "chapters": [
+        {
+          "id": "岗位画像",
+          "name": "岗位画像"
+        },
+        {
+          "id": "fps-同步",
+          "name": "FPS 同步"
+        },
+        {
+          "id": "场景设计",
+          "name": "场景设计"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "delta:三角洲后台的技术栈画像是什么",
+          "chapter": "岗位画像",
+          "label": "三角洲后台的技术栈画像是什么？",
+          "kind": "qa",
+          "content": "主力语言 **Go**（面经原话：\"不是用 cpp 做的游戏而是 go\"），C/C++ 亦可。业务=社交/活动/商业化系统；架构=高可用高并发微服务 + 全球多平台多地区部署 + 监控分析。基础要求 Linux/shell/gdb、TCP/IP 网络编程。团队=腾讯 IEG 天美 J3 工作室（琳琅天上）。"
+        },
+        {
+          "id": "delta:三角洲组一面的风格与应对",
+          "chapter": "岗位画像",
+          "label": "三角洲组一面的风格与应对？",
+          "kind": "qa",
+          "content": "不问常规八股，深挖实习：为什么没转正、组里业务、项目架构如何组合；回答被反复要求\"讲简短\"。应对=三层叙述法：我做了什么 → 组里业务 → 整体架构图，先结论后展开。"
+        },
+        {
+          "id": "delta:帧同步与状态同步的区别",
+          "chapter": "fps-同步",
+          "label": "帧同步与状态同步的区别？",
+          "kind": "qa",
+          "content": "帧同步只转发操作指令、客户端确定性演算，带宽小但防作弊弱、重连难；状态同步服务器权威跑逻辑下发状态，防作弊强、重连易但带宽大（需 AOI）。FPS/三角洲=状态同步为主 + 客户端预测；王者荣耀/RTS=帧同步。"
+        },
+        {
+          "id": "delta:fps-如何解决\"看着打中了实际没打中\"",
+          "chapter": "fps-同步",
+          "label": "FPS 如何解决\"看着打中了实际没打中\"？",
+          "kind": "qa",
+          "content": "客户端预测（先表现）+ 服务器延迟补偿（Server Rewind：保存玩家历史位置环形缓冲，处理开枪时回溯到开枪者视角的时刻做命中判定）+ 和解（服务器结果纠正本地预测）+ 其他玩家插值渲染。即 Valve 经典 Latency Compensation 方案。"
+        },
+        {
+          "id": "delta:服务器如何防外挂发假数据",
+          "chapter": "fps-同步",
+          "label": "服务器如何防外挂发假数据？",
+          "kind": "qa",
+          "content": "原则：客户端不可信。只接受输入意图、不接受结果；伤害/命中/掉落全部服务端计算；射速/移速/资源速率合理性校验；统计风控（命中率离群）+ 离线复核（ACE）。"
+        },
+        {
+          "id": "delta:三角洲战斗内和大厅分别用-tcp-还是-udp",
+          "chapter": "fps-同步",
+          "label": "三角洲战斗内和大厅分别用 TCP 还是 UDP？",
+          "kind": "qa",
+          "content": "战斗内（走位/开枪/命中）用 UDP + 自定义可靠层（KCP/QUIC 思路：选择性重传+FEC），避免 TCP 队头阻塞；大厅/登录/匹配/商城用 TCP 或 HTTP/gRPC，可靠优先。"
+        },
+        {
+          "id": "delta:全球排行榜怎么设计",
+          "chapter": "场景设计",
+          "label": "全球排行榜怎么设计？",
+          "kind": "qa",
+          "content": "Redis zset，score 拼接时间戳处理同分；DB 事实源 → Kafka → 增量更新；只维护前 N + 定时快照；好友榜/战区榜/赛季榜分 key；\"我的名次\"用 zrevrank 或分段估算。"
+        },
+        {
+          "id": "delta:匹配系统怎么设计",
+          "chapter": "场景设计",
+          "label": "匹配系统怎么设计？",
+          "kind": "qa",
+          "content": "模式×MMR 分桶（zset），周期撮合 MMR 相近者；等待越久条件越宽；延迟就近优先；车队按最高段位计；成局后分配房间服。指标=等待时长/MMR 方差/成局率。"
+        },
+        {
+          "id": "delta:抽卡系统怎么保证概率与保底",
+          "chapter": "场景设计",
+          "label": "抽卡系统怎么保证概率与保底？",
+          "kind": "qa",
+          "content": "概率表+权重随机；PRD 伪随机平滑体验；保底计数器 Redis+DB 持久化；扣费与发放同事务幂等；审计日志对账。"
+        },
+        {
+          "id": "delta:击杀回放怎么设计",
+          "chapter": "场景设计",
+          "label": "击杀回放怎么设计？",
+          "kind": "qa",
+          "content": "录\"周期快照+关键事件流\"而非视频；回放=快照加载+事件重演（确定性前提）；对象存储+CDN 分发；保留期分级；服务反作弊复核与观战。"
+        },
+        {
+          "id": "delta:网格背包系统怎么设计-类三角洲",
+          "chapter": "场景设计",
+          "label": "网格背包系统怎么设计（类三角洲）？",
+          "kind": "qa",
+          "content": "背包=W×H 位图；物品=形状掩码（4 个旋转方向预生成）；放置=掩码与运算 O(面积)；拖动预览=实时碰撞检测+高亮；整理=按面积/稀有度 First-Fit；布局是资产，服务端权威校验。"
+        }
+      ],
+      "edges": [
+        {
+          "s": "delta:三角洲后台的技术栈画像是什么",
+          "t": "delta:三角洲组一面的风格与应对",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "delta:帧同步与状态同步的区别",
+          "t": "delta:fps-如何解决\"看着打中了实际没打中\"",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "delta:fps-如何解决\"看着打中了实际没打中\"",
+          "t": "delta:服务器如何防外挂发假数据",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "delta:服务器如何防外挂发假数据",
+          "t": "delta:三角洲战斗内和大厅分别用-tcp-还是-udp",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "delta:全球排行榜怎么设计",
+          "t": "delta:匹配系统怎么设计",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "delta:匹配系统怎么设计",
+          "t": "delta:抽卡系统怎么保证概率与保底",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "delta:抽卡系统怎么保证概率与保底",
+          "t": "delta:击杀回放怎么设计",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "delta:击杀回放怎么设计",
+          "t": "delta:网格背包系统怎么设计-类三角洲",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "delta:三角洲战斗内和大厅分别用-tcp-还是-udp",
+          "t": "delta:帧同步与状态同步的区别",
+          "kind": "rel",
+          "label": "同步方案决定协议选型"
+        },
+        {
+          "s": "delta:击杀回放怎么设计",
+          "t": "delta:帧同步与状态同步的区别",
+          "kind": "rel",
+          "label": "帧同步的指令流天然支持回放"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "go",
+      "name": "Go语言",
+      "note": "interview-prep/language/Go语言.md",
+      "source": "notes",
+      "chapters": [
+        {
+          "id": "调度",
+          "name": "调度"
+        },
+        {
+          "id": "内存",
+          "name": "内存"
+        },
+        {
+          "id": "并发",
+          "name": "并发"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "go:gmp-模型是什么-p-的数量怎么决定",
+          "chapter": "调度",
+          "label": "GMP 模型是什么？P 的数量怎么决定？",
+          "kind": "qa",
+          "content": "G=协程、M=内核线程、P=调度上下文（本地运行队列）。P 数量=GOMAXPROCS=逻辑 CPU 核数。G 阻塞系统调用时 M 与 P 解绑（handoff）；本地队列空时 work stealing；网络 IO 走 netpoller 事件化不占 M。"
+        },
+        {
+          "id": "go:协程和线程的区别",
+          "chapter": "调度",
+          "label": "协程和线程的区别？",
+          "kind": "qa",
+          "content": "协程用户态调度（Go runtime），KB 级栈，切换不进内核，百万级可行；线程由内核调度，MB 级默认栈，切换需陷入内核保存上下文。"
+        },
+        {
+          "id": "go:slice-的底层与扩容规则",
+          "chapter": "内存",
+          "label": "slice 的底层与扩容规则？",
+          "kind": "qa",
+          "content": "{ptr,len,cap} 结构；传参复制头但共享底层数组；cap<256 翻倍扩容，之后约 1.25 倍（1.18+）；扩容后指向新数组与原数组分离。"
+        },
+        {
+          "id": "go:go-的-gc-机制",
+          "chapter": "内存",
+          "label": "Go 的 GC 机制？",
+          "kind": "qa",
+          "content": "三色标记+混合写屏障；STW 仅标记开始/结束两瞬（<1ms）；触发=堆达上轮 2 倍（GOGC）/2 分钟/手动；设计目标低延迟优先，区别于 Java 分代 GC 追求吞吐。"
+        },
+        {
+          "id": "go:channel-的操作规则",
+          "chapter": "并发",
+          "label": "channel 的操作规则？",
+          "kind": "qa",
+          "content": "无缓冲=同步交接，有缓冲=异步；向 closed 发送 panic；从 closed 读返回零值+false；close(nil) panic；nil channel 读写永久阻塞。底层 hchan=环形缓冲+等待队列+mutex。"
+        },
+        {
+          "id": "go:map-并发读写安全吗",
+          "chapter": "并发",
+          "label": "map 并发读写安全吗？",
+          "kind": "qa",
+          "content": "不安全，触发 fatal error 且不可 recover。方案：sync.RWMutex、sync.Map（读多写少）、分片锁（高并发写）。"
+        }
+      ],
+      "edges": [
+        {
+          "s": "go:gmp-模型是什么-p-的数量怎么决定",
+          "t": "go:协程和线程的区别",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "go:slice-的底层与扩容规则",
+          "t": "go:go-的-gc-机制",
+          "kind": "seq",
+          "label": "下一问"
+        },
+        {
+          "s": "go:channel-的操作规则",
+          "t": "go:map-并发读写安全吗",
+          "kind": "seq",
+          "label": "下一问"
         }
       ],
       "warnings": []

@@ -268,11 +268,11 @@
           "t": "auto 和 decltype",
           "label": "类型推导联动"
         },
-        [
-          "operator new / placement new",
-          "new/delete 和 malloc/free 的区别",
-          "new 的两层拆解"
-        ],
+        {
+          "s": "operator new / placement new",
+          "t": "new/delete 和 malloc/free 的区别",
+          "label": "new 的两层拆解"
+        },
         {
           "s": "C++ ABI",
           "t": "静态链接 vs 动态链接",
@@ -557,6 +557,51 @@
           "s": "反思与自我修正",
           "t": "Agent 怎么评测",
           "label": "反思产出可评测轨迹"
+        }
+      ],
+      "nodes": []
+    },
+    "delta": {
+      "edges": [
+        {
+          "s": "delta:帧同步与状态同步的区别",
+          "t": "delta:fps-如何解决\"看着打中了实际没打中\"",
+          "label": "延迟补偿建立在服务器权威的状态同步之上"
+        },
+        {
+          "s": "delta:三角洲战斗内和大厅分别用-tcp-还是-udp",
+          "t": "delta:帧同步与状态同步的区别",
+          "label": "同步方案决定协议选型"
+        },
+        {
+          "s": "delta:击杀回放怎么设计",
+          "t": "delta:帧同步与状态同步的区别",
+          "label": "帧同步的指令流天然支持回放"
+        },
+        {
+          "s": "delta:服务器如何防外挂发假数据",
+          "t": "delta:fps-如何解决\"看着打中了实际没打中\"",
+          "label": "同属服务器权威防作弊体系"
+        }
+      ],
+      "nodes": []
+    },
+    "go": {
+      "edges": [
+        {
+          "s": "go:gmp-模型是什么-p-的数量怎么决定",
+          "t": "go:协程和线程的区别",
+          "label": "GMP 是协程用户态调度的具体实现"
+        },
+        {
+          "s": "go:map-并发读写安全吗",
+          "t": "go:channel-的操作规则",
+          "label": "共享内存加锁 vs 消息传递，两种并发思路"
+        },
+        {
+          "s": "go:go-的-gc-机制",
+          "t": "go:slice-的底层与扩容规则",
+          "label": "合理扩容减少分配次数、降低 GC 压力"
         }
       ],
       "nodes": []

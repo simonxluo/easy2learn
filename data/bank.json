@@ -1,7 +1,8 @@
 {
   "meta": {
     "name": "面经题库（OS + C++ + UE + LLM + 米哈游 + AI Infra + Agent）",
-    "version": 1
+    "version": 1,
+    "updatedAt": "2026-10-25T06:20:09.179Z"
   },
   "topics": [
     {
@@ -38,6 +39,20 @@
       "id": "agent",
       "name": "Agent开发",
       "note": "interview-prep/agent/Agent开发.md"
+    },
+    {
+      "id": "gameserver",
+      "name": "游戏服务端一面"
+    },
+    {
+      "id": "delta",
+      "name": "三角洲后台专项",
+      "note": "interview-prep/delta/三角洲后台专项.md"
+    },
+    {
+      "id": "go",
+      "name": "Go语言",
+      "note": "interview-prep/language/Go语言.md"
     }
   ],
   "notesRoots": [
@@ -1630,6 +1645,715 @@
       "analysis": "私有：栈、寄存器/PC、errno、信号屏蔽字、tid；共享：地址空间、fd 表、信号处理函数、cwd。线程崩溃会带崩整个进程。",
       "knowledge": "pthread → clone(CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD…)\n每线程仍有独立 task_struct（/proc 可见，gettid 区分）",
       "id": "q095"
+    },
+    {
+      "id": "q096",
+      "type": "qa",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【网易雷火一面原题】为什么投游戏业务？游戏服务端与互联网服务端有什么区别？",
+      "answer": "互联网服务端：多为无状态 HTTP 短连接，请求-响应模式，靠水平扩容扛流量，服务挂了重启即可。\n游戏服务端：①有状态长连接（TCP/KCP），玩家上下文常驻内存；②强实时性，逻辑以 tick 帧循环/事件驱动，毫秒级响应；③采用帧同步或状态同步，单服承载有上限，分区分服/分布式场景服务架构；④对数据一致性和防作弊要求高（服务端权威），宕机要考虑断线重连、现场恢复。",
+      "analysis": "答题思路：先一句话点出本质差异（游戏服是长连接、有状态、实时驱动的服务），再从连接模型、实时性、同步架构、容错防作弊四个维度展开对比，最后落到“所以游戏服技术挑战在单服性能、状态同步和现场恢复”。",
+      "knowledge": "# 游戏服务端 vs 互联网服务端\n| 维度 | 互联网后端 | 游戏服务端 |\n|---|---|---|\n| 连接 | HTTP 短连接、无状态 | 长连接、玩家状态常驻内存 |\n| 实时性 | 请求驱动 | tick/事件驱动，毫秒级 |\n| 同步 | 无 | 帧同步 / 状态同步 |\n| 扩容 | 无状态水平扩容 | 分区分服、场景分裂 |\n| 容错 | 重启即可 | 断线重连、现场恢复、服务端权威防作弊 |\n\n# 为什么投游戏业务（话术）\n玩过并深入了解某款产品（举具体游戏）→ 欣赏其技术挑战（高并发实时同步、数值一致性）→ 自己的项目/技能可迁移（C++、网络、分布式）→ 希望做离玩家反馈最近的技术。"
+    },
+    {
+      "id": "q097",
+      "type": "single",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【米哈游高频】C++ 中 shared_ptr 的循环引用问题是什么？如何解决？",
+      "options": [
+        "unique_ptr 可以随意拷贝，拷贝后两个指针共享对象",
+        "shared_ptr 循环引用会导致内存泄漏，把一方改成 weak_ptr 可解决",
+        "weak_ptr 会增加 shared_ptr 的强引用计数",
+        "make_shared 会把引用计数的分配和对象分配分开，比 new 更慢"
+      ],
+      "answer": 1,
+      "analysis": "答 B。A 错：unique_ptr 不可拷贝只能 move；C 错：weak_ptr 只增加弱计数；D 错：make_shared 一次性分配对象+控制块，更快且更安全。",
+      "knowledge": "# 智能指针\n- `unique_ptr`：独占所有权，不可拷贝只能 move，零开销抽象\n- `shared_ptr`：强/弱引用计数，计数增减是原子操作；控制块与对象可分开也可用 make_shared 一次分配\n- `weak_ptr`：不增加强引用，解决循环引用；使用前 lock() 提升为 shared_ptr，过期返回空\n- 循环引用场景：A 持 shared<B>、B 持 shared<A> → 析构时计数都无法归零 → 把“被拥有方”（如子指向父）改成 weak_ptr"
+    },
+    {
+      "id": "q098",
+      "type": "qa",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【米哈游电话面原题】C++ 多态是如何实现的？",
+      "answer": "多态通过虚函数表（vtable）+ 虚表指针（vptr）实现：\n1. 编译器为每个含虚函数的类生成一张虚表，表中按声明顺序存放该类各虚函数的地址（派生类覆盖的条目被替换成派生类版本）；\n2. 每个对象头部有一个 vptr，指向所属类的虚表（由构造函数初始化为基类虚表，再逐步切换到派生类）；\n3. 调用 base->f() 时，实际执行 obj->vptr[index]()，运行时按对象真实类型查表，实现动态绑定。\n代价：每个对象多一个指针、调用多一次间接寻址（难以内联）。注意：构造/析构函数内调用虚函数不表现多态（当时 vptr 指向当前正在构造/析构的类）。",
+      "analysis": "答题思路：从对象模型讲起——虚表是编译期为每个含虚函数的类生成的函数指针表，每个对象头部存一个 vptr 指向所属类的虚表；调用时多一次查表间接寻址实现动态绑定。加分点：构造/析构期间虚表尚未切换/已切换，调用虚函数不发生多态；虚函数影响对象大小和拷贝成本。",
+      "knowledge": "# C++ 多态实现\n- 静态多态：函数重载、模板（编译期绑定）\n- 动态多态：虚函数（运行期查 vtable）\n- vtable 按类生成一份；vptr 按对象存储\n- 多继承下有多个 vptr，虚表分主表/次表\n- 纯虚函数 = 表中放 __cxa_pure_virtual，抽象类不可实例化"
+    },
+    {
+      "id": "q099",
+      "type": "single",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【网易雷火高频】帧同步和状态同步的区别是什么？",
+      "options": [
+        "帧同步只同步玩家输入，各客户端在相同初始状态下模拟出一致结果；状态同步由服务端计算并广播实体状态，客户端只做表现",
+        "帧同步由服务端计算所有实体状态再广播；状态同步只传玩家输入",
+        "两者只是名字不同，实现完全一样",
+        "状态同步不能用于 MMO，因为带宽太大"
+      ],
+      "answer": 0,
+      "analysis": "答案：A。雷火一面真题。答题思路：先给结论（状态同步传结果，帧同步传输入），再展开带宽、反外挂、回放、断线重连等工程差异。",
+      "knowledge": "# 帧同步 vs 状态同步\n| 维度 | 帧同步 | 状态同步 |\n|---|---|---|\n| 传输内容 | 玩家操作输入 | 服务端算好的实体状态 |\n| 逻辑权威 | 各客户端相同初始状态+输入自行模拟 | 服务端权威 |\n| 带宽 | 小（只传操作） | 大（广播状态，需 AOI 兴趣管理裁剪） |\n| 反外挂 | 客户端易被破解，需服务端校验 | 天然服务端权威，反外挂好 |\n| 回放/Ghost | 免费获得（存输入即可） | 需额外记录 |\n| 一致性 | 浮点数/随机数/遍历顺序必须严格一致 | 不敏感 |\n- 适用：帧同步多用于 MOBA/RTS/格斗等高频操作对抗；状态同步多用于 MMO/开放世界。\n- 混合方案：状态同步 + 客户端预测 + 服务端回滚校正。"
+    },
+    {
+      "id": "q100",
+      "type": "qa",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【米哈游服务端一面原题】两个头文件互相 include（循环包含）怎么解决？#pragma once 能解决吗？",
+      "answer": "1. 循环包含的成因：a.h include b.h、b.h 又 include a.h，且各自使用了对方的完整类型定义，编译期互相依赖无解。\n2. 解法：\n ① 前向声明：在 a.h 中只写 class B;，把对 B 的使用限制在指针/引用（不完整类型允许），在 a.cpp 中再 #include \"b.h\"；\n ② 抽接口/下沉公共头：把两者共同依赖的部分抽到独立的 base.h；\n ③ 重新设计职责，消除双向依赖（最根本）。\n3. 注意：#pragma once / include guard 只能防“同一头文件被重复包含”，解决不了循环依赖。",
+      "analysis": "答题思路：先说结论（循环包含的根源是头文件互相 #include 且各自需要对方完整定义），再给三段解法（前向声明、接口抽取、include guard/pragma once 是防重复包含不是解循环）。",
+      "knowledge": "# 头文件与循环包含\n- 声明 vs 定义：class B; 是声明可写多个；定义只能一份（ODR）\n- 指针/引用成员只需声明；值成员、继承、sizeof、调用成员都需要完整定义\n- 特殊函数不能放头文件分离编译的：模板、inline、constexpr（需要调用点可见定义）\n- 米哈游还常追问：为什么模板要写在头文件？（实例化点需要看到完整定义）"
+    },
+    {
+      "id": "q101",
+      "type": "qa",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【网易雷火一面原题】程序 Segmentation Fault（段错误）有哪些可能的原因？你会怎么排查？",
+      "answer": "访问无效内存：野指针、悬垂指针（对象已析构）、越界访问数组/容器、迭代器失效。\n空指针与未初始化：解引用 nullptr、使用未初始化变量。\n栈溢出：无限递归、超大的栈上对象（默认栈约 8MB）。\n堆错误：double free、free 非堆内存、new[]/delete 混用。\n异常未捕获：抛出后没有 catch，std::terminate。\n系统资源耗尽：内存分配失败抛 bad_alloc、fd 泄耗尽、创建线程失败。\n其他：除零（整数）、多线程数据竞争引发的踩内存。",
+      "analysis": "答题思路：这是一道“排查思路题”，雷火一面真题。按“编译期/运行期/资源级”三层分类枚举，最好带一句“项目里我用 ASan/核心转储定位过 XX”。",
+      "knowledge": "# Segfault 排查方法论（面试可加分）\n1. 拿到 core dump：gdb ./a.out core → bt 看崩溃栈\n2. 编译期开 AddressSanitizer（-fsanitize=address）+ debug 符号复现\n3. 检查生命周期：对象是否被别处释放/析构后仍被回调（异步回调持有 this 是游戏服常见坑，可用 enable_shared_from_this 或弱回调解决）\n4. 多线程数据竞争：ThreadSanitizer（-fsanitize=thread）"
+    },
+    {
+      "id": "q102",
+      "type": "qa",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【高频】为什么很多游戏用 UDP/KCP 而不是 TCP 做战斗同步？TCP 哪些特性不适合实时游戏？",
+      "answer": "多数玩法同时用两条通道：\n1. 战斗/移动等高频实时数据走 UDP（或基于 UDP 的可靠传输层如 KCP/ENet/QUIC）：延迟敏感，丢一两个状态包无所谓，下一个 tick 的包会覆盖；且 UDP 没有 TCP 的队头阻塞，单包丢失不会阻塞后续消息。\n2. 登录、支付、聊天、交易等强可靠性数据走 TCP。\nTCP 不适合的原因：队头阻塞（丢一个包后续全部等待重传）、按序送达但旧数据已失效、Nagle/拥塞控制引入不可控延迟。KCP 的思路：快速重传+选择性重传+可牺牲带宽换延迟（ARQ 参数可调）。",
+      "analysis": "答题思路：这是游戏服务端标志性问题。从游戏对延迟的敏感度切入：TCP 的队头阻塞、重传策略、Nagle 都是为可靠性牺牲延迟；实时对抗需要“新的比旧的重要”，这是 TCP 给不了的。",
+      "knowledge": "# TCP vs UDP 在游戏中的选型\n- TCP：可靠、按序、字节流；代价是队头阻塞 + 延迟抖动\n- UDP：无连接、逐包独立；需自建可靠性（KCP/ENet）\n- KCP 关键特性：UNA+ACK、快速重传（跳过次数可配）、非退让流控（牺牲带宽换延迟）\n- MMORPG 常纯 TCP（可容忍延迟）；FPS/MOBA 必 UDP 系"
+    },
+    {
+      "id": "q103",
+      "type": "qa",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【高频】epoll 和 select/poll 的区别？LT 和 ET 模式是什么？游戏服务器怎么用？",
+      "answer": "epoll 是 Linux 提供的 IO 多路复用机制，适合管理海量连接、少量活跃的场景（正是游戏网关的特点）：\n1. epoll_create 建实例，内核维护一棵红黑树存放监听的 fd；\n2. epoll_ctl 增删改 fd 及关注事件；\n3. 事件到达时内核回调把 fd 加入就绪链表，epoll_wait 只返回就绪的 fd——O(1) 获取就绪列表，而 select/poll 每次都要 O(n) 遍历全部 fd 并全量拷贝 fd 集合；\n4. select 还有 1024 个 fd 上限，poll 无上限但仍 O(n)。\nLT（水平触发）：不处理会反复通知；ET（边缘触发）：只在状态变化通知一次，必须一次性读到 EAGAIN，配合非阻塞 fd 使用。游戏网关常用 ET + 非阻塞 + one loop per thread 模型。",
+      "analysis": "答题思路：先答定义（epoll 是 Linux IO 多路复用机制），再对比 select/poll 的 O(n) 轮询，讲红黑树+就绪链表两个数据结构，最后 LT/ET 区别和游戏服网关线程模型的落地。",
+      "knowledge": "# IO 多路复用对比\n| | select | poll | epoll |\n|---|---|---|---|\n| fd 上限 | 1024 | 无 | 无（受系统 fd 限制） |\n| 复杂度 | O(n) | O(n) | O(1) 就绪返回 |\n| fd 拷贝 | 每次全量 | 每次全量 | 注册一次（红黑树） |\n| 触发 | LT | LT | LT/ET |\n- Reactor 模式：epoll + 非阻塞 IO + 回调；游戏服主循环 = epoll_wait(timeout=tick) + 处理网关事件 + 执行一帧逻辑"
+    },
+    {
+      "id": "q104",
+      "type": "qa",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【高频】TCP 粘包/拆包是什么原因？游戏服务端如何解决？",
+      "answer": "成因：TCP 是字节流协议，不保留应用层消息边界，一次 recv 可能收到半条、一条或多条消息。\n解决（定界协议）：\n1. 定长消息（浪费带宽，少用）；\n2. 特殊分隔符（如 \\r\\n，需转义正文，Telnet/HTTP 类）；\n3. 长度前缀（游戏服主流）：包头 = 长度(4B) + 协议号(2B) + body；recv 后先收满包头，解析长度再收满 body，多余字节留给下一帧（配合环形缓冲区/Buffer 类管理半包粘包）。",
+      "analysis": "答题思路：成因（TCP 是字节流无消息边界）→ 定界方案（长度前缀最优）→ 游戏服实践。",
+      "knowledge": "# 粘包拆包实现要点\n- Buffer 设计：读写下标 + 扩容（类似 muduo Buffer）\n- 状态机：读包头态 → 读包体态循环\n- 网络库参考：muduo、libhv、asio 的 async_read(length) 天然处理半包\n- 大包保护：长度字段超上限直接断开（防恶意包）"
+    },
+    {
+      "id": "q105",
+      "type": "judge",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【判断·高频】九宫格算法是游戏中实现 AOI（兴趣区域管理）的常用方案，可以把广播复杂度从 O(N²) 降到邻域级别。",
+      "answer": true,
+      "analysis": "答：对。雷火/米哈游都爱问 AOI。答题思路：先说问题（全服广播 O(N²) 不可行），再给九宫格方案与复杂度，提灯塔/十字链表作为加分项。",
+      "knowledge": "# AOI（Area of Interest）实现\n1. 九宫格：地图划成格子，玩家只与同格+邻格 3×3 内对象交互。移动时只处理跨格增量通知，复杂度从 O(N²) 降到 O(邻域内人数)；广播只发给观察者集合。\n2. 灯塔（灯塔视野）：XY 两轴分别建有序链表（十字链表），以灯塔为锚点广播，适合大规模均匀分布。\n3. 优化：格子大小权衡（太小管理开销大，太大广播浪费）、_dirty 标记同步、视野半径可配。\n游戏服务端高并发核心：单场景线程 + actor 模型，或多进程分场景 + 全局唯一 ID 服务。"
+    },
+    {
+      "id": "q106",
+      "type": "qa",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【高频】TIME_WAIT 出现在哪一方？为什么要等 2MSL？TIME_WAIT 过多怎么办？",
+      "answer": "TIME_WAIT 出现在主动关闭方，持续 2×MSL。\n原因：\n1. 保证最后一个 ACK 可靠到达：若 ACK 丢失，对方重传 FIN，本端还能重发 ACK；\n2. 让旧连接的报文在网络中自然消亡，避免延迟报文串入复用同四元组的新连接。\nTIME_WAIT 过多的危害：占用端口/内存，客户端耗尽临时端口无法建新连接。\n缓解：net.ipv4.tcp_tw_reuse（仅客户端出连接，配合时间戳）、加端口范围、长连接池减少建连、负载均衡四元组打散。不推荐 tw_recycle（已废弃）。",
+      "analysis": "答题思路：按“新起一条连接进入 TIME_WAIT 谁先关谁产生”记忆；然后答 2MSL 的两个原因；最后给服务端避免措施。注意：TIME_WAIT 是主动关闭方才有。",
+      "knowledge": "# 三次握手 / 四次挥手速查\n- 三次握手：SYN → SYN+ACK → ACK；为什么不是两次：防止历史重复 SYN 让服务端白白建立连接、双方需确认彼此收发能力\n- 四次挥手：FIN → ACK → FIN → ACK；被动方 ACK 后进入 CLOSE_WAIT（代码没调 close 的泄漏信号）\n- MSL：报文最大生存时间，Linux 取 30s，2MSL=60s"
+    },
+    {
+      "id": "q107",
+      "type": "multi",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【多选·高频】关于协程（coroutine），下列说法正确的是？",
+      "options": [
+        "协程切换发生在用户态，不需要陷入内核，开销比线程切换小",
+        "协程可以用来把异步回调风格的代码写成同步风格，提升游戏逻辑可读性",
+        "单个线程内的协程是串行执行的，不会出现该线程内的数据竞争",
+        "使用协程可以让单线程程序利用多核并行计算"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "analysis": "答：A、B、C。D 错在协程不能利用多核（同一线程内切换）。答题思路：定位（用户态轻量线程，切换不进内核）→ 对比线程 → 游戏服落地价值。",
+      "knowledge": "# 协程\n- 本质：用户态调度的执行单元，切换只保存/恢复少量寄存器，不进内核\n- 代价：单个协程阻塞系统调用会阻塞整线程 → 需 hook 系统调用（golang runtime 那样）或只在 IO 点让出\n- 游戏服应用：同步风格写异步逻辑（如腾讯 libco、skynet 的 lua 协程），一个玩家请求一个协程，逻辑可读性远好于回调地狱\n- 对比：线程切换 ~1-10μs 进内核；协程 ~0.1μs 纯用户态\n- 注意：协程不并行，CPU 密集仍需多线程/多进程配合"
+    },
+    {
+      "id": "q108",
+      "type": "single",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【网易二面真题】10GB 日志文件，每行是玩家 ID 和在线时长，单机内存有限，如何找出在线时长 Top100 的玩家？",
+      "options": [
+        "一次性把 10GB 全部加载进内存，sort 后取前 100",
+        "按玩家 ID 哈希分片，分片内用大小为 100 的小顶堆流式求局部 Top100，再归并各片结果",
+        "用 bitmap 统计每个玩家是否在线，再排序",
+        "无解，必须用分布式数据库"
+      ],
+      "answer": 1,
+      "analysis": "答 B。考点：海量数据 Top-K 的标准套路。答的时候先说内存放不下 → 分治（哈希分片）→ 每片小顶堆/部分排序 → 归并。主动说出复杂度（O(N log K)）和堆为什么用小顶（堆顶是当前第 K 大，便于淘汰）。",
+      "knowledge": "# Top-K 海量数据套路\n1. 分治：按 hash(playerID) % 100 切成可载入内存的小文件\n2. 每片：小顶堆 O(N log K) 或部分排序，得到该片 Top100\n3. 归并各片 Top100（归并排序思想/再次小顶堆）得全局 Top100\n变体追问：\n- 单机内存够：直接 hashmap 累计 + 小顶堆流式处理\n- 精确实时：Redis ZSet 排行榜；近似：Count-Min Sketch\n- 为什么小顶堆：堆顶是当前 K 个中最小者，新元素只需和堆顶比较"
+    },
+    {
+      "id": "q109",
+      "type": "single",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【高频】某游戏上线新活动，大量玩家同时请求一个不存在的商品 ID，请求全部打到数据库。这是什么问题？如何解决？",
+      "options": [
+        "缓存雪崩，解法是给过期时间加随机抖动",
+        "缓存穿透，解法是布隆过滤器或缓存空值",
+        "缓存击穿，解法是互斥锁重建缓存",
+        "数据库死锁，解法是调整事务隔离级别"
+      ],
+      "answer": 1,
+      "analysis": "答 B。穿透=查不存在的数据→布隆过滤器/空值缓存；击穿=单个热 key 过期→互斥锁/永不过期；雪崩=大量 key 同时过期→过期时间加随机。",
+      "knowledge": "# 缓存三大问题\n| 问题 | 场景 | 解法 |\n|---|---|---|\n| 穿透 | 查询不存在的 key，缓存永远不命中打穿到 DB | 布隆过滤器、缓存空值（短 TTL） |\n| 击穿 | 某个热点 key 过期瞬间大量请求直达 DB | 互斥重建、逻辑过期、热点永不过期 |\n| 雪崩 | 大量 key 同时过期或 Redis 宕机 | TTL 加随机抖动、多级缓存、集群高可用 |\n# Redis 数据结构\nString/Hash/List/Set/ZSet；ZSet 跳表实现——排行榜经典方案（ZINCRBY+ZREVRANGE）；单线程指命令执行线程，6.0 后 IO 多线程"
+    },
+    {
+      "id": "q110",
+      "type": "qa",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【网易互娱一面原题】介绍一下你项目里遇到的最大难点，你是怎么定位和解决的？（STAR 法复盘）",
+      "answer": "模板：\n背景（1 句）：项目是什么、多少人用/多大流量、我的角色。\n难点（STAR）：\n- Situation：某次压测/线上出现 XX（如：网关在 5k 长连接时 CPU 尖刺、RPC 超时毛刺）\n- Task：需要定位并保证 P99 延迟\n- Action：怎么定位（perf/火焰图、日志埋点、tcpdump）、根因是什么（如 epoll LT 重复通知、锁粒度太粗、序列化拷贝）、怎么改（改 ET、无锁队列、对象池/zero-copy）\n- Result：量化收益（CPU 降 40%、P99 从 80ms 到 12ms）\n收尾：沉淀了 XX 工具/规范。\n追问预案：为什么选这个架构？换个方案比较过吗？流量×10 后哪里先崩？（答瓶颈分析：连接层/逻辑层/DB 层各自的扩展手段）",
+      "analysis": "答题思路（STAR）：一句话定位项目和角色 → 挑一个最难的坑（现象→排查链路→根因→方案→量化结果）→ 收尾讲沉淀。注意：网易一面两位面试官全程围绕项目追问，每个技术选型都要能答“为什么”，并准备好“流量×10 怎么扩展”。",
+      "knowledge": "# 项目复盘清单（今晚必做）\n- 每个项目写 30 秒版 + 3 分钟版\n- 技术选型三连：为什么用它、对比过什么、代价是什么\n- 坑的完整链路：现象 → 假设 → 验证工具 → 根因 → 修复 → 量化\n- 简历上每个名词都可能被问：写了“自研网关”就会被问 epoll/线程模型；写了 Redis 就会被问集群/持久化"
+    },
+    {
+      "id": "q111",
+      "type": "qa",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【高频】死锁的四个必要条件是什么？工程上如何预防死锁？",
+      "answer": "死锁：两个及以上线程互相持有对方需要的锁且都不释放，永久阻塞。\n四个必要条件：\n1. 互斥：资源一次只能被一个线程持有\n2. 持有并等待：拿到锁后又去等新资源\n3. 不可剥夺：不能强行抢走\n4. 循环等待：形成环状等待链\n预防（破坏对应条件）：统一加锁顺序（破坏循环等待，工程最常用）、一次性申请全部资源、RAII + std::scoped_lock 多锁一次上锁、try_lock + 超时退避。检测：gdb 看线程栈、TSan、pstack 找互相等待的锁。",
+      "analysis": "答题思路：死锁定义 → 四条件（缺一不可）→ 预防各对一条 → 检测手段。米哈游/网易都常追问“工程里怎么避免”，重点答锁排序和 RAII。",
+      "knowledge": "# 死锁四条件记忆口诀\n互斥、持有并等待、不可剥夺、循环等待 → 破坏任意一条即可防死锁\nC++ 工具：std::lock(m1, m2) 死锁免死锁算法、std::scoped_lock、std::shared_lock（读写锁）\n无锁方向：CAS/atomic、无锁队列（游戏服日志线程、消息队列常用）"
+    },
+    {
+      "id": "q112",
+      "type": "qa",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【高频】游戏服务端的定时器（技能 CD、Buff、心跳）一般用什么数据结构实现？为什么？",
+      "answer": "常用三种：\n1. 小顶堆（priority_queue）：按到期时间排序，每次 tick 检查堆顶是否到期，插入 O(logN)、取到期 O(logN)×个数；缺点：删除/修改单个定时器不便。\n2. 时间轮（timing wheel）：环形数组 + 按刻度推进，插入 O(1)，适合海量短周期定时器（技能 CD、Buff、心跳检测），游戏引擎主流（skynet/Quartz 思想）。\n3. 红黑树/跳表有序表：支持按时间遍历和删除。\n游戏主循环：while(true){ epoll_wait(剩余到下个 tick 时间); 处理网络事件; 推进定时器到期的任务; 执行一帧逻辑; 广播; }。",
+      "analysis": "答题思路：先说游戏主循环是 tick 驱动（逻辑帧 15-30/s），定时任务挂到主循环检查会 O(N) 轮询 → 需要按到期时间组织的数据结构。然后对比堆 vs 时间轮，提游戏 NPC/技能 CD 的落地点。",
+      "knowledge": "# 定时器对比\n| 方案 | 插入 | 删除 | 到期扫描 |\n|---|---|---|---|\n| 小顶堆 | O(logN) | O(logN)（惰性删除标记） | 看堆顶 |\n| 时间轮 | O(1) | O(1) | 按刻度走格子 |\n| 有序链表 | O(N) | O(1) | 表头 |\n- 多级时间轮（时分秒三级）处理超长定时\n- skynet 实现参考：分层时间轮 + 每 tick 推进"
+    },
+    {
+      "id": "q113",
+      "type": "code",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【手撕高频】LRU 缓存（LeetCode 146）：get/put 均 O(1)。游戏服中背包/邮件缓存常用。",
+      "analysis": "思路：hash 表保证 O(1) 定位 + 双向链表保证 O(1) 摘除/头插。面试时先讲清数据结构组合的理由再写代码，注意 get 也算访问要移到头部。",
+      "knowledge": "# LRU 手写要点\n- 数据结构：unordered_map<int, list<pair<int,int>>::iterator> + list<pair<int,int>>\n- 关键操作：命中后 splice 到头部（O(1)，不失效迭代器）\n- 淘汰：back() 即最久未用\n- 追问变体：LFU（频率桶）、带 TTL 的 LRU、线程安全版（加锁或分片）",
+      "code": {
+        "lang": "cpp",
+        "starter": "#include <unordered_map>\n// 实现 LRUCache(int capacity)\n// int get(int key)   不存在返回 -1，存在则移到头部并返回\n// void put(int key, int value) 不存在则插入（超容量淘汰尾节点）；存在则更新并移到头部\n",
+        "tests": [
+          {
+            "stdin": "",
+            "expected": "[1,2]"
+          }
+        ]
+      }
+    },
+    {
+      "id": "q114",
+      "type": "qa",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [],
+      "stem": "【两家通用】自我介绍怎么讲？最后反问环节问什么合适？",
+      "answer": "自我介绍模板（60-90 秒）：\n我是 XX，XX 大学 XX 专业。技术上：C++ 为主（C++11/14/17，多线程、智能指针、模板），熟悉 Linux 网络编程（epoll、Reactor）、（有就提：写过一个网关/RPC 框架，量化数据：N 连接、P99 延迟）。项目上：一段 XX 实习 + 一个 XX 项目，最大亮点是解决了 XX。对游戏服务端的高并发实时同步很有热情，玩过 XX（挑一款了解深的游戏，能聊架构更好）。\n反问推荐（准备 2 个）：\n1. 团队目前服务端的技术栈和架构？单服还是分布式？\n2. 新人前三个月一般做什么？有没有导师制？\n3. 当前项目最大的技术挑战是什么？（体现工程思维）\n避免：一上来问加班/薪资/调休。",
+      "analysis": "思路：米哈游重 C++ 底层 + 高性能场景，网易重项目追问。反问要体现你想过这份工作，不要问薪资福利（那是 HR 面的事）。",
+      "knowledge": "# 面试当天清单\n- 身份证/简历多带两份、提前 10 分钟到场/进会议\n- 自我介绍出声练习 3 遍以上\n- 手写代码时：先确认题意和边界 → 讲思路 → 再写 → 主动说复杂度和测试用例\n- 不会的题：说出思考路径和相关性知识，不要硬编"
+    },
+    {
+      "id": "q115",
+      "type": "single",
+      "topic": "delta",
+      "difficulty": 1,
+      "tags": [
+        "三角洲",
+        "岗位画像"
+      ],
+      "stem": "【三角洲岗位】根据官方 JD 与 2025.9 三角洲项目组后台一面面经，三角洲行动后台开发的主力语言是什么？",
+      "options": [
+        "Java",
+        "Go（C/C++ 亦可）",
+        "C#",
+        "PHP"
+      ],
+      "answer": 1,
+      "analysis": "面经中三角洲面试官原话：'我这边比较不寻常，不是用 cpp 做的游戏而是 go'。官方 JD 写的是精通 Go/C/C++ 至少一种。",
+      "knowledge": "# 三角洲后台技术栈\n\n- 主力语言：**Go**（面经证实），C/C++ 亦可\n- 架构：高可用高并发微服务，全球多平台多地区部署\n- 基础：Linux、shell、调试工具（gdb）、TCP/IP 网络编程\n- 中间件：Redis / Kafka / MySQL / Protobuf\n- 项目：腾讯 IEG 天美 J3 工作室（琳琅天上团队），同类项目《使命召唤手游》"
+    },
+    {
+      "id": "q116",
+      "type": "judge",
+      "topic": "delta",
+      "difficulty": 1,
+      "tags": [
+        "三角洲",
+        "岗位画像"
+      ],
+      "stem": "【三角洲岗位】《三角洲行动》由腾讯天美 J3 工作室（琳琅天上团队）研发，其后台 JD 要求：精通 Go/C/C++ 至少一种、大规模高可用微服务经验、熟悉 Linux 与 TCP/IP。",
+      "answer": true,
+      "analysis": "官方介绍：三角洲行动由腾讯天美J3工作室琳琅天上团队研发运营，支持PC/移动/主机多端；后台 JD 要求 Go/C/C++、大规模高可用微服务、Linux、TCP/IP。",
+      "knowledge": "- 三角洲 = 搜打撤 + 大战场玩法的多端战术射击游戏\n- 后台业务：社交、活动、商业化系统；监控分析；全球部署\n- 面试官建议：做游戏后台要多玩游戏"
+    },
+    {
+      "id": "q117",
+      "type": "qa",
+      "topic": "delta",
+      "difficulty": 3,
+      "tags": [
+        "三角洲",
+        "FPS同步",
+        "延迟补偿",
+        "高频"
+      ],
+      "stem": "【FPS 专项·IEG 后台三面真题】玩 FPS 时网络有延迟，玩家明明看到打中了敌人，服务器却判定没打中。作为后台开发，你怎么解决这个问题？",
+      "answer": "标准答案（IEG 后台三面真题）：\n1. **客户端预测（Client Prediction）**：本地开枪/移动先立即表现，不等服务器。\n2. **服务器延迟补偿（Lag Compensation / Server Rewind）**：服务器为每个玩家保存最近几百毫秒的**历史位置环形缓冲**；处理开枪请求时，把所有玩家位置**回退到开枪者发出指令那一刻（开枪者视角看到的世界）**再做弹道命中判定，判定完再恢复。\n3. **和解（Reconciliation）**：服务器权威结果回来后，若与本地预测不一致，用服务器结果修正并做平滑插值。\n4. 对其他玩家的移动用**插值（Interpolation）**渲染，牺牲少量实时性换平滑。\n这套组合 = Valve《Latency Compensating Methods》经典方案，CS/瓦罗兰特/三角洲都是这个思路。",
+      "analysis": "考的是你能否把「客户端预测 + 服务器回溯 + 和解」三件套讲成一条链路。追问常见：环形缓冲存多久（一般 0.5~1s）；高延迟玩家会不会变相外挂（回溯窗口限制 + 上限判定）。",
+      "knowledge": "# FPS 网络同步三件套\n- **客户端预测**：先表现后确认，体验流畅\n- **服务器权威**：伤害/命中/物资全部服务端判定，防作弊基石\n- **延迟补偿（Server Rewind）**：命中判定回溯到开枪者视角的历史时刻\n- **和解 + 插值**：纠错平滑\n\n# 为什么有效\n玩家看到的世界本身就是延迟 N ms 的过去；只要在「相同的过去」里判定命中，双方视角就一致了。"
+    },
+    {
+      "id": "q118",
+      "type": "qa",
+      "topic": "delta",
+      "difficulty": 2,
+      "tags": [
+        "三角洲",
+        "反作弊",
+        "FPS同步",
+        "高频"
+      ],
+      "stem": "【FPS 专项·IEG 后台三面真题】FPS 的后端服务器怎么防止外挂通过客户端发假数据？",
+      "answer": "核心原则：**客户端不可信（Never trust the client）**。\n1. **服务器权威（Server Authoritative）**：服务器只接受「输入意图」（我要开枪、我要移动到哪），绝不接受「结果」（我打中了、我捡到了）。伤害、命中、掉落全部服务端计算。\n2. **合理性校验**：射速/移动速度/资源获取速率的上限校验；瞬移检测；经济系流转平衡校验。\n3. **统计风控**：命中率/爆头率/KD 离群检测 → 离线复核 + 人工/模型判罚（腾讯系有 ACE 反作弊）。",
+      "analysis": "面试官想听的一句话：客户端只上报意图，结果由服务器自己算。再展开校验维度与风控闭环。",
+      "knowledge": "# 反作弊分层\n- 协议层：加密 + 随机挑战 + 防重放\n- 逻辑层：服务器权威 + 速率/合理性校验\n- 数据层：统计风控 + 离线复核（ACE）\n- 运营层：举报/回放/封禁策略"
+    },
+    {
+      "id": "q119",
+      "type": "single",
+      "topic": "delta",
+      "difficulty": 2,
+      "tags": [
+        "三角洲",
+        "帧同步",
+        "状态同步",
+        "高频"
+      ],
+      "stem": "【FPS 专项】三角洲这类 FPS 的战斗同步，业界主流方案是什么？",
+      "options": [
+        "纯帧同步（服务器只转发操作）",
+        "服务器权威的状态同步为主，配合客户端预测、和解、延迟补偿",
+        "客户端权威（客户端算完上报结果）",
+        "P2P 无服务器"
+      ],
+      "answer": 1,
+      "analysis": "三角洲/CS/瓦罗兰特都是状态同步为主；王者荣耀、RTS 才是帧同步。区分清楚两类游戏是高频考点。",
+      "knowledge": "# 状态同步 vs 帧同步\n| 维度 | 帧同步 | 状态同步 |\n|---|---|---|\n| 传输 | 操作指令 | 状态/事件 |\n| 带宽 | 小 | 大（需 AOI） |\n| 一致性 | 要求确定性演算 | 服务器唯一权威 |\n| 防作弊 | 弱 | 强 |\n| 回放/观战 | 天然支持 | 需额外记录 |\n| 断线重连 | 难（重放指令） | 易（拉快照） |\n\n# FPS 实际做法 = 状态同步为主 + 客户端预测/和解/延迟补偿混合"
+    },
+    {
+      "id": "q120",
+      "type": "qa",
+      "topic": "delta",
+      "difficulty": 2,
+      "tags": [
+        "三角洲",
+        "TCP",
+        "UDP",
+        "KCP",
+        "高频"
+      ],
+      "stem": "【三角洲选型】三角洲这种 FPS 的网络传输，战斗内和大厅系统分别该用 TCP 还是 UDP？为什么？",
+      "answer": "分区选型（三角洲/同类 FPS 通行做法）：\n1. **战斗内同步（走位、开枪、命中）→ UDP + 自定义可靠层（KCP/QUIC 思路）**：实时性优先，丢包靠快速重传/FEC 兜底；队头阻塞会毁掉射击手感。\n2. **登录、匹配、商城、结算、社交 → TCP（或 HTTP/gRPC）**：可靠性优先，延迟不敏感。\n3. 可靠层要点：seq/ack + 超时重传（RTT 自适应）+ 滑动窗口 + FEC 前向纠错 + 乱序重排。\n4. 王者荣耀同理：帧同步战斗用可靠 UDP，局外用 TCP。",
+      "analysis": "答题模板：分区选型（战斗实时 vs 系统可靠）+ 理由 + 可靠 UDP 原理一句话。",
+      "knowledge": "# TCP 不适合实时战斗的三个原因\n- 队头阻塞：一个包丢了，后面全等着\n- 拥塞控制退避：丢包时反而降速，游戏要的是立刻重传\n- 重传延迟固定不可控\n\n# 可靠 UDP = KCP/QUIC 思路\n牺牲带宽换延迟：选择性重传、快速重传、FEC"
+    },
+    {
+      "id": "q121",
+      "type": "qa",
+      "topic": "delta",
+      "difficulty": 3,
+      "tags": [
+        "三角洲",
+        "场景设计",
+        "Redis",
+        "排行榜"
+      ],
+      "stem": "【场景设计·多厂高频】设计一个游戏的全球排行榜（支持同分排序、赛季切换、查询自己名次）。",
+      "answer": "参考方案（四步法）：\n1. **数据结构**：Redis zset，member=玩家ID，score=积分。同分问题：score 拼接「分数+达成时间戳/玩家ID」保证唯一排序。\n2. **更新链路**：战绩结算服务写 DB（事实源）→ 发 Kafka → 排行消费者增量更新 zset（避免大事务）。\n3. **规模控制**：全球榜只维护前 N（如 1w）+ 定时快照存档；亿级用户查「我的名次」用 zrevrank（限定在小 zset）或分段估算。\n4. **多维度榜**：好友榜（关系链+交集计算）、战区榜（按区域分 key）、赛季榜（key 加赛季后缀 + 过期归档）。",
+      "analysis": "白板四步：需求→数据结构→更新链路→异常/规模。能主动提「估算内存与 qps」会加分。",
+      "knowledge": "# 排行榜要点\n- zset score 唯一性设计：分数+时间戳拼接\n- 读写分离：DB 是事实源，Redis 是读视图，MQ 异步解耦\n- 热点：榜首页读多 → 本地缓存 + 定时刷新\n- 反作弊视角：异常分数先冻结后复核再上榜"
+    },
+    {
+      "id": "q122",
+      "type": "qa",
+      "topic": "delta",
+      "difficulty": 3,
+      "tags": [
+        "三角洲",
+        "场景设计",
+        "匹配系统"
+      ],
+      "stem": "【场景设计·三角洲大战场】设计一个 FPS 匹配系统（段位相近、延迟就近、等待时间可控）。",
+      "answer": "参考方案：\n1. **分层池**：按模式（搜打撤/大战场）× 段位/MMR 分桶，桶用 Redis zset（member=玩家，score=MMR 或入队时间）。\n2. **撮合策略**：每隔 1~2s 扫桶，优先 MMR 接近的聚簇成局；**等待时间越长，允许的 MMR 差越大**（时间换质量）。\n3. **延迟就近**：同优先网络区域/延迟相近的优先同局；跨区仅在等待超时后兜底。\n4. **车队规则**：车队以队内最高段位计入；防止高手带小号炸鱼。\n5. **成局后**：写匹配记录 → 分配房间服（负载+亲缘）→ 推送进房。\n6. **指标**：平均等待时长、MMR 方差、成局率、中途退出率。",
+      "analysis": "匹配题的得分点是：分层池化 + 条件随时间放宽 + 多目标（技能+延迟）权衡 + 车队规则。",
+      "knowledge": "# 匹配系统核心\n- ELO/MMR 评分\n- 匹配池数据结构：zset 分桶\n- 宽放曲线：wait越久条件越宽\n- 目标函数：技能差最小 + 等待时间最短 + 延迟最优"
+    },
+    {
+      "id": "q123",
+      "type": "qa",
+      "topic": "delta",
+      "difficulty": 2,
+      "tags": [
+        "三角洲",
+        "场景设计",
+        "抽卡",
+        "概率"
+      ],
+      "stem": "【场景设计】游戏抽卡系统怎么保证概率准确、有保底、可审计？",
+      "answer": "要点：\n1. **概率模型**：配置概率表 + 权重随机；伪随机 PRD（每次未出货提升概率）让体验更平滑。\n2. **保底**：计数器存 Redis（进度）+ 定期持久化 DB；硬保底（N 抽必出）与软保底（概率爬升）。\n3. **幂等与审计**：扣费与出货在同一事务/用幂等号防重复发放；每次抽取落审计日志（可回溯对账，运营事故兜底）。\n4. **合规**：公示概率、未成年人限制。",
+      "analysis": "考频高但答得散的题。记住三层：概率引擎（权重随机/PRD）、保底状态（计数器持久化，崩了不能重置）、合规与审计（公示概率+日志对账）。能主动提 PRD 与幂等就是亮点。",
+      "knowledge": "# 抽卡三要素\n- 权重随机：rand(总权重) 落区间\n- PRD 伪随机：p' = p * N 递增，方差小\n- 保底计数器：状态持久化，崩了不能重置"
+    },
+    {
+      "id": "q124",
+      "type": "qa",
+      "topic": "delta",
+      "difficulty": 2,
+      "tags": [
+        "三角洲",
+        "场景设计",
+        "回放",
+        "反作弊"
+      ],
+      "stem": "【场景设计·牛客游戏面经】FPS 的击杀回放（Death Replay / Killcam）功能怎么设计？",
+      "answer": "要点：\n1. **记录什么**：不录视频，录「周期快照 + 关键事件流」（位置/血量/开枪/命中），体积小几个量级。\n2. **回放 = 快照加载 + 事件重演**：确定性逻辑下重放事件即可复现击杀过程；帧同步游戏天然支持（存指令流就行）。\n3. **存储分发**：回放文件传对象存储（COS/S3）+ CDN；保留期分级（普通 7 天/举报相关 30 天）。\n4. **用途**：反作弊复核（上帝视角逐帧检查）、精彩集锦、观战。",
+      "analysis": "关键洞察：不录视频，录「快照+事件流」。有确定性就能重演；帧同步游戏存指令流天然支持。收尾提反作弊闭环（举报→回放→复核）体现业务理解。",
+      "knowledge": "# 回放设计核心\n- 快照 + 事件流 >>> 全量录像（体积）\n- 确定性 = 可重放的前提\n- 反作弊闭环：举报 → 调回放 → 复核 → 封禁"
+    },
+    {
+      "id": "q125",
+      "type": "qa",
+      "topic": "delta",
+      "difficulty": 3,
+      "tags": [
+        "三角洲",
+        "场景设计",
+        "背包",
+        "位运算"
+      ],
+      "stem": "【场景设计·类三角洲背包（牛客真题）】背包格子大小一致，但物品占据不同大小（如 2×3 格）。如何设计数据结构支持快速放置、拖动预览与自动整理？",
+      "answer": "要点（三角洲式背包 = 网格占位）：\n1. **数据结构**：背包 = W×H 位图/二维数组；物品模板携带形状掩码（如 2×3 矩阵）；4 个旋转方向掩码预生成。\n2. **放置/取出**：形状掩码与目标区域做与运算，全 0 才可放；取出清位。O(面积)。\n3. **拖动预览**：实时掩码碰撞检测 + 高亮可放格；吸附提示。\n4. **快速整理**：按面积/稀有度降序，首次适配（First-Fit）逐个重放；少量剩余空间时可做回溯/最佳适配优化。\n5. **同步**：服务端存 authoritative 布局，客户端只发「移动指令」，服务器校验防改包。",
+      "analysis": "数据结构题：形状掩码 + 背包位图，放置就是位与运算；旋转预生成 4 方向掩码避免实时计算；整理用 First-Fit。最后落在「布局是资产，服务端权威」防作弊收尾。",
+      "knowledge": "# 网格背包要点\n- 位运算判碰撞：mask & target == 0\n- 旋转：预生成 4 方向掩码\n- 整理算法：分级 + First-Fit\n- 服务器权威：布局即资产，必须服务端校验"
+    },
+    {
+      "id": "q126",
+      "type": "code",
+      "topic": "delta",
+      "difficulty": 2,
+      "tags": [
+        "三角洲",
+        "手撕",
+        "真题",
+        "计数"
+      ],
+      "stem": "【手撕真题·三角洲项目组一面】给定一个二进制文件，把每个字节当作一个无符号整数（0-255），找出出现频次最高的数字；可能有多个，全部返回。\n\n输入：第一行 n，第二行 n 个 0-255 的整数。输出：频次最高的值，多个则按升序空格分隔。",
+      "analysis": "三角形洲项目组一面真题（共享屏幕手写）。考察点：① 字节即 uint8 → 256 个桶的计数数组；② 多个众数都要返回；③ 文件很大时：分块读入+归并（外排序/Count-Merge 思想）。面试时把这三层讲出来就是满分。",
+      "knowledge": "# 思路\n- 计数数组/哈希计数：O(n)\n- 多众数：找 max 后收集所有等于 max 的 key，排序输出\n- 追问「文件特别大」：分块统计 + 归并；或 256 个定长桶直接流式累加（字节场景最优雅）\n\n# 参考答案\n```python\nc = Counter(nums)\nmx = max(c.values())\nresult = sorted(k for k, v in c.items() if v == mx)\n```",
+      "code": {
+        "lang": "python",
+        "starter": "import sys\nfrom collections import Counter\n\ndef main():\n    data = sys.stdin.read().split()\n    n = int(data[0])\n    nums = list(map(int, data[1:1 + n]))\n    # TODO: 把每个数看作一个字节(0-255)，统计出现次数\n    # 返回频次最高的值；可能有多个，按升序输出，空格分隔\n    result = []\n    print(' '.join(map(str, result)))\n\nmain()",
+        "tests": [
+          {
+            "stdin": "5\n1 2 2 3 3\n",
+            "expected": "2 3"
+          },
+          {
+            "stdin": "6\n7 7 7 1 1 2\n",
+            "expected": "7"
+          },
+          {
+            "stdin": "1\n255\n",
+            "expected": "255"
+          }
+        ]
+      }
+    },
+    {
+      "id": "q127",
+      "type": "single",
+      "topic": "go",
+      "difficulty": 2,
+      "tags": [
+        "Go",
+        "GMP",
+        "高频"
+      ],
+      "stem": "【Go·高频】GMP 调度模型中，P 的数量默认由什么决定？",
+      "options": [
+        "CPU 逻辑核心数（GOMAXPROCS）",
+        "物理内存大小",
+        "网络带宽",
+        "写死为 1 不可修改"
+      ],
+      "answer": 0,
+      "analysis": "P=GOMAXPROCS=逻辑 CPU 数；这是 GMP 一连串追问的第一个台阶：P 阻塞了怎么办→handoff；本地队列空了怎么办→work stealing/全局队列。",
+      "knowledge": "# GMP 模型\n- G：goroutine；M：内核线程；P：调度上下文（持有本地运行队列，可执行 G 的\"许可证\"）\n- P 数量 = GOMAXPROCS = 默认逻辑 CPU 核数\n- G 阻塞在系统调用时：M 与 P 解绑（handoff），P 绑新 M 继续跑其他 G\n- 本地队列空 → 先偷别的 P 的一半（work stealing）→ 再着全局队列\n- 网络 IO 不阻塞 M：netpoller 就绪后 G 被重新入队"
+    },
+    {
+      "id": "q128",
+      "type": "judge",
+      "topic": "go",
+      "difficulty": 2,
+      "tags": [
+        "Go",
+        "map",
+        "并发",
+        "高频"
+      ],
+      "stem": "【Go·高频】Go 原生 map 并发读写会触发运行时 fatal，且无法被 recover 捕获。这个说法对吗？",
+      "answer": true,
+      "analysis": "fatal error 不可 recover 是高频陷阱题。引申：怎么破 → sync.RWMutex / sync.Map / 分片锁。",
+      "knowledge": "# map 并发\n- 并发读写触发 `fatal error: concurrent map read and map write`，**不可 recover**（不是 panic）\n- 底层：hmap 无锁，并发触发并发写检测 throw\n- 方案：sync.RWMutex（通用）、sync.Map（读多写少/不相交 key）、分片锁（高并发写）"
+    },
+    {
+      "id": "q129",
+      "type": "single",
+      "topic": "go",
+      "difficulty": 2,
+      "tags": [
+        "Go",
+        "channel",
+        "高频"
+      ],
+      "stem": "【Go·高频】关于 channel，下列说法**错误**的是？",
+      "options": [
+        "无缓冲 channel 的发送会阻塞直到有接收方",
+        "向已 close 的 channel 发送数据会 panic",
+        "从已 close 且缓冲已空的 channel 读取会立即返回零值",
+        "关闭一个 nil channel 是安全的、什么都不发生"
+      ],
+      "answer": 3,
+      "analysis": "D 错误：close(nil channel) 直接 panic。这套规则最好背成口诀：nil 读写永阻塞、close(nil) panic、向 closed 写 panic、从 closed 读零值。",
+      "knowledge": "# channel 规则表\n| 操作 | nil channel | 已 close | 正常 |\n|---|---|---|---|\n| 发送 | 永久阻塞 | **panic** | 阻塞或入队 |\n| 接收 | 永久阻塞 | 立即返回零值,false | 阻塞或取值 |\n| close | **panic** | panic | 关闭 |\n\n- 无缓冲：同步交接（发送等接收）；有缓冲：异步\n- 底层 hchan：环形缓冲 + 发送/接收等待队列 + mutex"
+    },
+    {
+      "id": "q130",
+      "type": "qa",
+      "topic": "go",
+      "difficulty": 3,
+      "tags": [
+        "Go",
+        "GC",
+        "高频"
+      ],
+      "stem": "【Go·必考】讲讲 Go 的垃圾回收（GC）机制。",
+      "answer": "要点：\n1. **三色标记**：白（未访问）/灰（已访问待扫描）/黑（已扫描完成）；从根对象出发把可达对象最终标黑，白色的就是垃圾。\n2. **混合写屏障**（Go 1.8+）：并发标记期间被修改的指针新旧对象都置灰，保证不漏标，代价是少量浮动垃圾。\n3. **STW 极短**：仅在标记开始（开启写屏障）和标记结束（终止）两个瞬间停顿，通常 <1ms。\n4. **触发**：堆增长到上轮存活堆的 2 倍（GOGC=100 默认）/ sysalloc 手动 / 2 分钟强制触发。\n5. **设计目标**：低延迟优先（区别于 Java 分代 GC 追求吞吐），适合游戏/网络服务的延迟敏感场景。",
+      "analysis": "Go 后端必考。答题骨架：三色标记+混合写屏障（1.8+）→ 两次极短 STW → 三种触发条件 → 设计哲学（低延迟 vs Java 吞吐）。追问常见：写屏障解决什么（并发标记漏标）→ 浮动垃圾；如何优化（sync.Pool、减少逃逸）。",
+      "knowledge": "# Go GC 必背\n- 三色标记 + 混合写屏障\n- 两次极短 STW\n- 触发：GOGC 阈值 / 2min / 手动\n- 优化：对象池 sync.Pool 减少 GC 压力；避免小对象逃逸"
+    },
+    {
+      "id": "q131",
+      "type": "single",
+      "topic": "go",
+      "difficulty": 2,
+      "tags": [
+        "Go",
+        "slice",
+        "高频"
+      ],
+      "stem": "【Go·高频】关于 slice 的底层与扩容，下列说法**正确**的是？",
+      "options": [
+        "slice 作为参数传递时，会完整复制底层数组",
+        "每次 append 都会触发扩容",
+        "两个 slice 可能共享同一个底层数组",
+        "len 会随 cap 自动同步增长"
+      ],
+      "answer": 2,
+      "analysis": "C 对：slice 头是{ptr,len,cap}，传参复制的是头，底层数组共享——子 slice 修改会影响原 slice 的经典坑。",
+      "knowledge": "# slice 底层\n```go\ntype slice struct { array unsafe.Pointer; len int; cap int }\n```\n- 传参复制的是 slice 头，底层数组共享\n- append 超过 cap 才扩容：cap<256 翻倍，之后约 1.25 倍（1.18+）\n- 扩容后指向新数组，与原数组分道扬镳\n- 经典坑：两个子 slice 共享底层数组，一个 append 覆盖另一个的数据"
+    },
+    {
+      "id": "q132",
+      "type": "single",
+      "topic": "gameserver",
+      "difficulty": 2,
+      "tags": [
+        "天美",
+        "存储",
+        "LSM",
+        "RocksDB"
+      ],
+      "stem": "【天美真题】RocksDB（LSM Tree）相比 MySQL 的 B+ 树，更适合下列哪种场景？",
+      "options": [
+        "读多写少的玩家核心资产",
+        "写多读少的玩家行为日志/战绩流水",
+        "强事务的充值扣费",
+        "两者没有区别"
+      ],
+      "answer": 1,
+      "analysis": "天美一面真题。追问链：LSM 写入路径（WAL→MemTable→SSTable 分层刷盘）→ 三种放大 → 游戏里什么数据适合（战绩流水、行为日志）。",
+      "knowledge": "# B+树 vs LSM Tree\n| 维度 | B+树（InnoDB） | LSM（RocksDB） |\n|---|---|---|\n| 写 | 随机写+页分裂 | 顺序追加，写极快 |\n| 读 | 点查/范围查都快 | 可能查多层 SSTable（读放大） |\n| 适用 | 读多写少、强事务 | 写多读少、日志/流水 |\n\n# 游戏选型\n- 玩家资产/货币：MySQL（事务）\n- 战绩流水/行为日志/回放索引：RocksDB/LSM"
+    },
+    {
+      "id": "q133",
+      "type": "judge",
+      "topic": "gameserver",
+      "difficulty": 2,
+      "tags": [
+        "MySQL",
+        "MVCC",
+        "事务",
+        "高频"
+      ],
+      "stem": "【MySQL·高频】MySQL InnoDB 在 RR（可重复读）隔离级别下，快照读主要靠 MVCC（undo log 版本链 + ReadView）实现。这个说法对吗？",
+      "answer": true,
+      "analysis": "这句是对的。再延伸一步：RR 下普通 SELECT 是快照读（MVCC），当前读（select...for update/update）靠间隙锁防幻读。",
+      "knowledge": "# MVCC 三要素\n- 隐藏列：trx_id（事务ID）、roll_pointer（回滚指针）\n- undo log 版本链\n- ReadView：判断当前事务能看到哪个版本\n\n# 隔离级别\n- RC：每条语句新建 ReadView\n- RR：事务内首个 ReadView 复用 → 可重复读"
+    },
+    {
+      "id": "q134",
+      "type": "single",
+      "topic": "gameserver",
+      "difficulty": 2,
+      "tags": [
+        "Redis",
+        "跳表",
+        "zset",
+        "高频"
+      ],
+      "stem": "【Redis·高频】Redis zset 底层为什么用跳表（skiplist）而不是红黑树？",
+      "options": [
+        "跳表更节省内存完全不占额外指针",
+        "实现简单、天然支持范围查询、并发锁粒度更细",
+        "红黑树查询是 O(n)",
+        "跳表不支持有序遍历"
+      ],
+      "answer": 1,
+      "analysis": "",
+      "knowledge": "# 跳表 vs 红黑树\n- 查询都是 O(log n)，但跳表范围遍历天然有序（沿底层链表走）\n- 实现简单：不需要旋转，调索引层即可\n- 并发友好：锁粒度小，易做无锁化\n- zset = 跳表 + dict（hash）双结构：hash 负责点查 O(1)，skiplist 负责排序范围"
+    },
+    {
+      "id": "q135",
+      "type": "qa",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [
+        "天美",
+        "TCP",
+        "三次握手",
+        "真题"
+      ],
+      "stem": "【天美二面真题】TCP 建立连接时，服务器回复的 SYN+ACK 能不能拆成两个独立的包发送？",
+      "answer": "参考答案：\n**不能/没有意义**。SYN+ACK 是服务器对客户端 SYN 的**一次性合并应答**（同时置位、同一个 seq），是三次握手的第二步。\n拆成 SYN 应答和 ACK 两包发送的问题：\n1. **语义退化为两次握手**：服务器在收到第三次 ACK 前就无法确认客户端可达；历史重复/延迟的 SYN 会建立脏连接，浪费半连接队列资源（SYN flood 放大）。\n2. **状态机不匹配**：TCP 状态机 SYN_RCVD 的迁移就定义在收到 SYN 后发出 SYN+ACK 这一合并动作上。\n3. 实际工程中 SYN+ACK 重传由内核控制（synack 重试次数），应用层无法也无需拆分。",
+      "analysis": "",
+      "knowledge": "# 三次握手状态机\n```\nC: CLOSED → SYN_SENT → ESTABLISHED\nS: LISTEN → SYN_RCVD → ESTABLISHED\n```\n- 为什么三次：防历史重复连接 + 双向确认收发能力\n- SYN flood：半连接队列被打满 → syncookies 应对"
+    },
+    {
+      "id": "q136",
+      "type": "single",
+      "topic": "gameserver",
+      "difficulty": 2,
+      "tags": [
+        "紫龙",
+        "volatile",
+        "原子性",
+        "高频"
+      ],
+      "stem": "【紫龙真题】`volatile int i`，两个线程并发执行 `i++`，volatile 能保证线程安全吗？",
+      "options": [
+        "能，volatile 保证原子性",
+        "不能，volatile 只保证可见性/禁止重排；i++ 是 load-inc-store 三步非原子，需 atomic（CAS/lock 前缀）或互斥锁",
+        "能，volatile 自带内存屏障等于加锁",
+        "只有 Java 的 volatile 能解决"
+      ],
+      "answer": 1,
+      "analysis": "经典连环陷阱：volatile≠原子。紫龙二面从这题一路追问到地址总线和逻辑门，准备时把 load-inc-store 三步和 CAS/lock 前缀讲清楚即可。",
+      "knowledge": "# i++ 的真相\n```\nload reg, [i]   ; 从内存读到寄存器\ninc reg          ; 寄存器自增\nstore [i], reg  ; 写回内存\n```\n三步非原子 → 两个线程各加 10 次结果可能 <20。\n\n# volatile\n- 只保证：可见性（立即刷主存）+ 禁止指令重排（内存屏障）\n- **不保证原子性**\n\n# 解法\n- 原子操作：atomic（x86 上 lock 前缀的 add / CAS）\n- 互斥锁：mutex（futex，竞争激烈时睡眠）"
+    },
+    {
+      "id": "q137",
+      "type": "qa",
+      "topic": "gameserver",
+      "difficulty": 3,
+      "tags": [
+        "紫龙",
+        "UDP",
+        "MTU",
+        "分片"
+      ],
+      "stem": "【紫龙真题】用 UDP 发送很大、很多的数据会发生什么？怎么解决？",
+      "answer": "要点：\n1. **IP 分片**：应用层一次交给 UDP 的数据报若超过 MTU（以太网约 1500 字节 - 头部），IP 层自动分片。\n2. **丢包放大**：任一分片丢失，**整个数据报作废**（UDP 不重传），大报文分片多 → 整体到达率断崖式下降，形成丢包风暴。\n3. **接收方重组压力**：分片乱序到达需缓存重组，占用内存与 CPU。\n4. **正确做法**：应用层控制每个包 ≤ MTU（如 1200 字节安全值）；大文件自己分包 + 序号 + 确认重传（KCP/QUIC 思路）；或直接换 TCP。",
+      "analysis": "",
+      "knowledge": "# UDP 大包问题\n- MTU ≈ 1500（以太网），含 IP 头 20 + UDP 头 8\n- 分片丢失 → 整报作废 → 有效到达率 = p^n（n=分片数）\n- 游戏同步包都应控制在一个 MTU 内"
+    },
+    {
+      "id": "q138",
+      "type": "qa",
+      "topic": "gameserver",
+      "difficulty": 2,
+      "tags": [
+        "天美",
+        "算法",
+        "二叉树",
+        "真题"
+      ],
+      "stem": "【天美校招真题】已知二叉树的中序和后序遍历结果，如何重建这棵树？",
+      "answer": "要点：\n1. 后序遍历**最后一个节点是根**。\n2. 在中序中找到根的位置，左边是左子树、右边是右子树。\n3. 递归重建：后序数组从尾部划分（倒数第一是根，往前依次是右子树、左子树的区间），中序数组按根下标划分。\n4. 复杂度 O(n)（用 hash 表存中序值→下标，避免每次线性找根）。\n注意：只有「中序 + 先序」或「中序 + 后序」能唯一重建；没有中序不行。",
+      "analysis": "",
+      "knowledge": "```python\ndef build(inorder, postorder):\n    idx = {v: i for i, v in enumerate(inorder)}\n    def rec(il, ir, pl, pr):\n        if il > ir: return None\n        root = TreeNode(postorder[pr])\n        m = idx[postorder[pr]]\n        left_n = m - il\n        root.left = rec(il, m-1, pl, pl+left_n-1)\n        root.right = rec(m+1, ir, pl+left_n, pr-1)\n        return root\n    return rec(0, len(inorder)-1, 0, len(postorder)-1)\n```"
+    },
+    {
+      "id": "q139",
+      "type": "qa",
+      "topic": "gameserver",
+      "difficulty": 2,
+      "tags": [
+        "天美",
+        "手撕",
+        "memcpy",
+        "真题"
+      ],
+      "stem": "【天美一面真题】手写 memcpy 需要注意什么？和 memmove 的区别是？",
+      "answer": "要点：\n1. **内存重叠**：dst 与 src 区间重叠时，从前往后拷会覆盖还没拷的数据。当 dst > src 且 dst < src+n 时，必须**从后往前**拷贝（这就是 memmove 的语义）。\n2. void* 不能解引用：按 unsigned char* 一字节一字节拷。\n3. 返回 dst（支持链式调用）。\n```c\nvoid* my_memcpy(void* dst, const void* src, size_t n) {\n    unsigned char* d = dst; const unsigned char* s = src;\n    if (d > s && d < s + n)\n        for (size_t i = n; i > 0; i--) d[i-1] = s[i-1]; // 从后往前\n    else\n        for (size_t i = 0; i < n; i++) d[i] = s[i];\n    return dst;\n}\n```\n4. 加分项：按字长拷贝加速（先对齐再 8 字节块拷）；restrict 关键字承诺不重叠让编译器优化。",
+      "analysis": "",
+      "knowledge": "# memcpy vs memmove\n- memcpy：不处理重叠（行为未定义），更快\n- memmove：检测重叠方向，选择拷贝顺序\n- 面试手写版通常要求自己处理重叠 = 写的是 memmove"
     }
   ]
 }
